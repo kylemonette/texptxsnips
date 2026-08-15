@@ -1,18 +1,31 @@
 import * as vscode from 'vscode';
 
+export interface ResolvedTemplate {
+	/** Raw vscode.SnippetString syntax with tabstops/escapes resolved to plain text. */
+	text: string;
+	/** Offset of $0 (final tabstop) in `text`, or end-of-text if absent. */
+	cursorOffset: number;
+	/** Offset of the lowest-numbered tabstop other than $0, if any. */
+	firstPlaceholderOffset: number | undefined;
+}
+
 /**
  * Resolves raw vscode.SnippetString syntax ($0, $1, ${1}, ${1:default},
- * \$ \\ \}) to plain text, for inserting as a normal edit instead of
- * starting a new native snippet session. Tabstops without a default
- * collapse to nothing; $0/${0} marks the resulting cursor offset.
+ * \$ \\ \}) to plain text, the way VS Code renders a snippet's initial
+ * state (defaults kept). Used to predict where a native snippet session
+ * would place the cursor, without actually starting one.
  */
-export function resolvePlainText(template: string): { text: string; cursorOffset: number } {
+export function resolveTemplate(template: string): ResolvedTemplate {
 	let out = '';
 	let cursorOffset: number | undefined;
+	let firstPlaceholderOffset: number | undefined;
+	let firstPlaceholderNum: number | undefined;
 	let i = 0;
 	while (i < template.length) {
 		const c = template[i];
-		if (c === '\\' && i + 1 < template.length) {
+		// VS Code's snippet grammar only recognizes \$, \} and \\ as escapes;
+		// any other backslash (e.g. LaTeX's \[, \], \\) is a literal char.
+		if (c === '\\' && i + 1 < template.length && '$}\\'.includes(template[i + 1])) {
 			out += template[i + 1];
 			i += 2;
 			continue;
@@ -24,7 +37,7 @@ export function resolvePlainText(template: string): { text: string; cursorOffset
 			const numStart = j;
 			while (j < template.length && /[0-9]/.test(template[j])) {j++;}
 			if (j > numStart) {
-				const num = template.slice(numStart, j);
+				const num = parseInt(template.slice(numStart, j), 10);
 				let defaultText = '';
 				if (braced && template[j] === ':') {
 					let depth = 1;
@@ -38,7 +51,12 @@ export function resolvePlainText(template: string): { text: string; cursorOffset
 					j = k;
 				}
 				if (braced && template[j] === '}') {j++;}
-				if (num === '0') {cursorOffset = out.length;}
+				if (num === 0) {
+					cursorOffset = out.length;
+				} else if (firstPlaceholderNum === undefined || num < firstPlaceholderNum) {
+					firstPlaceholderNum = num;
+					firstPlaceholderOffset = out.length;
+				}
 				out += defaultText;
 				i = j;
 				continue;
@@ -47,7 +65,7 @@ export function resolvePlainText(template: string): { text: string; cursorOffset
 		out += c;
 		i += 1;
 	}
-	return { text: out, cursorOffset: cursorOffset ?? out.length };
+	return { text: out, cursorOffset: cursorOffset ?? out.length, firstPlaceholderOffset };
 }
 
 /** Advances a Position by inserted text, accounting for embedded newlines. */
@@ -55,9 +73,4 @@ export function advancePosition(start: vscode.Position, text: string): vscode.Po
 	const lines = text.split('\n');
 	if (lines.length === 1) {return start.translate(0, text.length);}
 	return new vscode.Position(start.line + lines.length - 1, lines[lines.length - 1].length);
-}
-
-/** True if the template has real navigable placeholders beyond a bare final $0. */
-export function hasNavigableTabstops(template: string): boolean {
-	return /\$\{?[1-9]/.test(template);
 }

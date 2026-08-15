@@ -7,5 +7,5 @@ function today() {
 endglobal
 
 snippet date "today's date" A
-``today()``$0
+``rv=today()``$0
 endsnippet

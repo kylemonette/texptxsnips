@@ -4,7 +4,7 @@ import { SnippetStore } from './snippetStore';
 import { MathContextTracker } from './mathContext';
 import { getMatches, SnippetMatch } from './matching';
 import { getSnippetsDir } from './utils';
-import { advancePosition, hasNavigableTabstops, resolvePlainText } from './snippetTemplate';
+import { advancePosition, resolveTemplate } from './snippetTemplate';
 
 const LANGUAGES = ['latex', 'pretext'];
 const TRIGGER_CHARACTERS = ['\\', '{', '}', '_', '^', '$', "'", '-', '.', ',', ':', ';'];
@@ -23,11 +23,23 @@ export function activate(context: vscode.ExtensionContext) {
 	const mathContext = new MathContextTracker();
 	let expanding = false;
 
-	// Line span of the last snippet we put into native tabstop mode, so a
-	// second auto-expand triggered while it's still live can avoid starting
-	// a nested snippet session - VS Code's own SnippetController2 corrupts
-	// the outer session's tabstops when a snippet is inserted inside one.
-	let activeSnippetLines: { start: number; end: number } | undefined;
+	// Position where an unbroken, whitespace-free run of typing since the
+	// last *native* snippet session started currently ends - i.e. whether
+	// that session may still be live there. VS Code's snippet controller
+	// can't tell our own edits apart from a nested snippet insertion: any
+	// programmatic edit landing inside its tracked range, via insertSnippet
+	// *or* a plain editor.edit, loses track of its remaining tabstops.
+	// Normal typing doesn't trip this because it goes through VS Code's own
+	// input pipeline rather than an extension's edit API.
+	//
+	// Auto-expand (typing-triggered, below) never itself starts a native
+	// session - it always resolves to plain text with the cursor placed
+	// manually - so chaining several auto snippets in a row (e.g. multiple
+	// inline math shortcuts in one $ $) never risks this at all. This only
+	// matters for a *different* live session: one started deliberately via
+	// Tab (texptxsnips.expandOnTab), whose own remaining tabstops an
+	// auto-expand triggered while typing inside it could still corrupt.
+	let contiguousRunEnd: vscode.Position | undefined;
 
 	const reportErrors = (errors: string[]) => {
 		if (errors.length === 0) {return;}
@@ -63,28 +75,28 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	}
 
-	async function expand(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
+	// Starts a real native tabstop session. Only safe where no other live
+	// session can conflict with it (Tab is disabled while inSnippetMode).
+	async function applyExpansion(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
 		const text = generateText(match, document);
-		const nested = activeSnippetLines !== undefined
-			&& match.range.start.line >= activeSnippetLines.start
-			&& match.range.start.line <= activeSnippetLines.end;
+		const resolved = resolveTemplate(text);
+		// A single insertSnippet call over the trigger range replaces and
+		// expands atomically, so one undo reverts the whole expansion.
+		await editor.insertSnippet(new vscode.SnippetString(text), match.range);
+		contiguousRunEnd = resolved.firstPlaceholderOffset !== undefined
+			? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
+			: undefined;
+	}
 
-		if (nested) {
-			const { text: plain, cursorOffset } = resolvePlainText(text);
-			await editor.edit((eb) => eb.replace(match.range, plain));
-			const cursor = advancePosition(match.range.start, plain.slice(0, cursorOffset));
-			editor.selection = new vscode.Selection(cursor, cursor);
-		} else {
-			// A single insertSnippet call over the trigger range replaces and
-			// expands atomically, so one undo reverts the whole expansion.
-			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
-			if (hasNavigableTabstops(text)) {
-				const lineCount = (text.match(/\n/g) ?? []).length;
-				activeSnippetLines = { start: match.range.start.line, end: match.range.start.line + lineCount };
-			} else {
-				activeSnippetLines = undefined;
-			}
-		}
+	// Never starts a native session, so it's always safe to call regardless
+	// of what else is going on - used for every typing-triggered expansion.
+	async function applyPlainExpansion(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
+		const text = generateText(match, document);
+		const resolved = resolveTemplate(text);
+		await editor.edit((eb) => eb.replace(match.range, resolved.text));
+		const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
+		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
+		editor.selection = new vscode.Selection(cursor, cursor);
 	}
 
 	context.subscriptions.push(
@@ -94,20 +106,27 @@ export function activate(context: vscode.ExtensionContext) {
 			const minLine = Math.min(...event.contentChanges.map((c) => c.range.start.line));
 			mathContext.invalidate(event.document.uri, minLine);
 
-			if (activeSnippetLines) {
-				for (const change of event.contentChanges) {
-					if (change.range.start.line >= activeSnippetLines.start && change.range.start.line <= activeSnippetLines.end) {
-						const removedLines = change.range.end.line - change.range.start.line;
-						const addedLines = (change.text.match(/\n/g) ?? []).length;
-						activeSnippetLines.end += addedLines - removedLines;
-					}
-				}
-			}
-
 			// An undo/redo can reintroduce text that happens to match a
 			// trigger (e.g. undoing an expansion restores the trigger text
 			// itself) - auto-expanding in response would make undo a no-op.
-			if (event.reason !== undefined) {return;}
+			// Its edit shape also doesn't mean anything for run-tracking.
+			if (event.reason !== undefined) {
+				contiguousRunEnd = undefined;
+				return;
+			}
+
+			// applyExpansion() already updates contiguousRunEnd itself for the
+			// edit it makes; only track plain user keystrokes here. A
+			// keystroke that doesn't land exactly at the tracked end, or that
+			// is whitespace, breaks the run.
+			if (!expanding && contiguousRunEnd) {
+				const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
+				if (change && change.range.isEmpty && change.range.start.isEqual(contiguousRunEnd) && !/\s/.test(change.text)) {
+					contiguousRunEnd = advancePosition(contiguousRunEnd, change.text);
+				} else {
+					contiguousRunEnd = undefined;
+				}
+			}
 
 			if (expanding) {return;}
 			const editor = vscode.window.activeTextEditor;
@@ -121,25 +140,22 @@ export function activate(context: vscode.ExtensionContext) {
 			if (change.range.start.line !== change.range.end.line || change.text.includes('\n')) {return;}
 			const position = change.range.start.translate(0, change.text.length);
 
+			// A session started via Tab may still be live at this position -
+			// see contiguousRunEnd's comment for why we can't safely edit here.
+			if (contiguousRunEnd !== undefined) {return;}
+
 			const matches = getMatches(store.getSnippets(event.document.languageId), event.document, position, mathContext);
 			const auto = matches.find((m) => m.snippet.flags.auto);
 			if (!auto) {return;}
 
 			expanding = true;
 			try {
-				await expand(editor, auto, event.document);
+				await applyPlainExpansion(editor, auto, event.document);
 			} finally {
 				expanding = false;
 			}
 		}),
-		vscode.workspace.onDidCloseTextDocument((doc) => mathContext.forget(doc.uri)),
-		vscode.window.onDidChangeTextEditorSelection((event) => {
-			if (!activeSnippetLines) {return;}
-			const line = event.selections[0]?.active.line;
-			if (line === undefined || line < activeSnippetLines.start || line > activeSnippetLines.end) {
-				activeSnippetLines = undefined;
-			}
-		})
+		vscode.workspace.onDidCloseTextDocument((doc) => mathContext.forget(doc.uri))
 	);
 
 	context.subscriptions.push(
@@ -156,9 +172,11 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			// The keybinding only fires when !inSnippetMode, so no outer
+			// session can be live here - always safe to expand directly.
 			expanding = true;
 			try {
-				await expand(editor, matches[0], editor.document);
+				await applyExpansion(editor, matches[0], editor.document);
 			} finally {
 				expanding = false;
 			}

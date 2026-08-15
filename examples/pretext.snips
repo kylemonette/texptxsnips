@@ -1,6 +1,6 @@
 # Demo snippet for smoke-testing PreTeXt support.
 
-snippet thm "theorem" Ab
+snippet thm "theorem" b
 <theorem>
     <statement>
         <p>$1</p>

@@ -43,6 +43,13 @@
         "title": "TeXPtxSnips: Open Snippets Directory"
       }
     ],
+    "keybindings": [
+      {
+        "command": "texptxsnips.expandOnTab",
+        "key": "tab",
+        "when": "editorTextFocus && !editorReadonly && !inSnippetMode && !suggestWidgetVisible && (editorLangId == latex || editorLangId == pretext)"
+      }
+    ],
     "configuration": {
       "title": "TeXPtxSnips",
       "properties": {

@@ -143,22 +143,28 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// applyExpansion()/applyPlainExpansion() already update their own
 			// tracked end for the edit they make; only track plain user
-			// keystrokes here. A keystroke that doesn't land exactly at the
-			// tracked end, or that is whitespace, breaks the run.
+			// keystrokes here. Any edit that touches the tracked end - typing
+			// there, or backspacing/typing over content right before it -
+			// keeps the run going; an edit elsewhere breaks it.
 			const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
-			const isPlainRunKeystroke = (end: vscode.Position) =>
-				change !== undefined && change.range.isEmpty && change.range.start.isEqual(end) && !/\s/.test(change.text);
+			const advanceIfTouching = (end: vscode.Position): vscode.Position | undefined => {
+				if (change === undefined || !change.range.end.isEqual(end)) {return undefined;}
+				return advancePosition(change.range.start, change.text);
+			};
 
 			if (!expanding && nativeSessionEnd) {
-				nativeSessionEnd = isPlainRunKeystroke(nativeSessionEnd) ? advancePosition(nativeSessionEnd, change!.text) : undefined;
+				// Whitespace also breaks this one: it only exists to protect a
+				// real Tab-started session, and once the user has moved on to
+				// typing unrelated content there's no reason to keep guarding it.
+				nativeSessionEnd = change && !/\s/.test(change.text) ? advanceIfTouching(nativeSessionEnd) : undefined;
 			}
 			if (!expanding && autoRunEnd) {
-				if (isPlainRunKeystroke(autoRunEnd)) {
-					autoRunEnd = advancePosition(autoRunEnd, change!.text);
-				} else {
-					autoRunEnd = undefined;
-					pendingExitSuffix = undefined;
-				}
+				// No whitespace check here: a space or newline can be part of
+				// the same ongoing expression (e.g. "5x^2 + 4x^2", or content
+				// spanning multiple lines inside dm) - only an edit that
+				// doesn't touch the tracked position means we've moved on.
+				autoRunEnd = advanceIfTouching(autoRunEnd);
+				if (autoRunEnd === undefined) {pendingExitSuffix = undefined;}
 			}
 
 			if (expanding) {return;}

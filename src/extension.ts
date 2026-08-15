@@ -56,6 +56,16 @@ export function activate(context: vscode.ExtensionContext) {
 	let autoRunEnd: vscode.Position | undefined;
 	let pendingExits: string[] = [];
 
+	// A chained plain-run expansion can itself need a real native session.
+	// Going native clears pendingExits/autoRunEnd
+	// since a live native session must own navigation, but that would
+	// otherwise silently strand whatever the plain run was still waiting to
+	// exit. pausedExits holds that stack while the nested native session is live,
+	// and gets restored once we can next confirm it's over - either the
+	// next expandMatch (a fresh trigger typed right after) or expandOnTab
+	// (gated on VS Code's own !inSnippetMode, so that's a reliable signal).
+	let pausedExits: string[] | undefined;
+
 	const reportErrors = (errors: string[]) => {
 		if (errors.length === 0) {return;}
 		output.appendLine(errors.join('\n'));
@@ -115,11 +125,15 @@ export function activate(context: vscode.ExtensionContext) {
 			nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
 				? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
 				: undefined;
-			// A real session handles its own navigation now; any pending
-			// plain-text exit points from before are no longer relevant.
+			// The native session owns navigation now. If this was chained
+			// inside a plain run with something still pending (e.g. mk's
+			// closing $), stash it rather than dropping it - see pausedExits.
+			if (autoRunEnd !== undefined && pendingExits.length > 0) {
+				pausedExits = pendingExits;
+			}
 			autoRunEnd = undefined;
 			pendingExits = [];
-			log(`  -> native session; nativeSessionEnd=${posStr(nativeSessionEnd)} autoRunEnd/pendingExits cleared`);
+			log(`  -> native session; nativeSessionEnd=${posStr(nativeSessionEnd)} autoRunEnd/pendingExits cleared, pausedExits=${JSON.stringify(pausedExits)}`);
 			return;
 		}
 
@@ -128,17 +142,28 @@ export function activate(context: vscode.ExtensionContext) {
 		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
 		editor.selection = new vscode.Selection(cursor, cursor);
 
-		if (autoRunEnd === undefined) {
-			// First expansion of a fresh run: start the exit stack from
-			// scratch with this one's own trailing text, if it has any.
+		// A fresh trigger with no run of its own currently live, but a
+		// paused stack waiting from a native session that must therefore
+		// just have ended (a new expansion means we're back to plain
+		// typing) - pick the paused run back up rather than starting over.
+		const resuming = autoRunEnd === undefined && pausedExits !== undefined;
+		if (resuming) {
+			pendingExits = pausedExits!;
+			pausedExits = undefined;
+			log(`  resumed paused run; pendingExits=${JSON.stringify(pendingExits)}`);
+		}
+
+		if (autoRunEnd === undefined && !resuming) {
+			// First expansion of a genuinely fresh run: start the exit stack
+			// from scratch with this one's own trailing text, if it has any.
 			pendingExits = resolved.firstPlaceholderOffset !== undefined ? [resolved.text.slice(resolved.firstPlaceholderOffset)] : [];
 			log(`  -> plain, fresh run; cursor=${posStr(cursor)} pendingExits=${JSON.stringify(pendingExits)}`);
 		} else {
-			// Chained within an existing run: a snippet with its own
-			// placeholder (e.g. a fraction's denominator) nests a new
-			// trailing boundary inside whatever was already pending: push
-			// it as the new innermost level. One with no placeholder of its
-			// own (e.g. plain text like \times) doesn't add a new boundary.
+			// Chained within an existing (possibly just-resumed) run: a
+			// snippet with its own placeholder (e.g. a fraction's
+			// denominator) nests a new trailing boundary inside whatever
+			// was already pending - push it as the new innermost level. One
+			// with no placeholder of its own doesn't add a new boundary.
 			if (resolved.firstPlaceholderOffset !== undefined) {
 				pendingExits.push(resolved.text.slice(resolved.firstPlaceholderOffset));
 			}
@@ -162,6 +187,7 @@ export function activate(context: vscode.ExtensionContext) {
 				nativeSessionEnd = undefined;
 				autoRunEnd = undefined;
 				pendingExits = [];
+				pausedExits = undefined;
 				return;
 			}
 
@@ -237,7 +263,7 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			log(`expandOnTab: cursor=${posStr(editor.selection.active)} autoRunEnd=${posStr(autoRunEnd)} pendingExits=${JSON.stringify(pendingExits)} nativeSessionEnd=${posStr(nativeSessionEnd)}`);
+			log(`expandOnTab: cursor=${posStr(editor.selection.active)} autoRunEnd=${posStr(autoRunEnd)} pendingExits=${JSON.stringify(pendingExits)} pausedExits=${JSON.stringify(pausedExits)} nativeSessionEnd=${posStr(nativeSessionEnd)}`);
 			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
 			if (matches.length > 0) {
 				// The keybinding only fires when !inSnippetMode, so no outer
@@ -249,6 +275,18 @@ export function activate(context: vscode.ExtensionContext) {
 					expanding = false;
 				}
 				return;
+			}
+
+			// Nothing to expand and no live run of our own - but if there's a
+			// paused stack, a nested native session (e.g. int) must have just
+			// ended, since this command only runs when VS Code itself
+			// confirms !inSnippetMode. Resume tracking from here so the
+			// outer exit is still reachable below.
+			if (autoRunEnd === undefined && pausedExits !== undefined) {
+				autoRunEnd = editor.selection.active;
+				pendingExits = pausedExits;
+				pausedExits = undefined;
+				log(`expandOnTab: resumed paused run at ${posStr(autoRunEnd)}; pendingExits=${JSON.stringify(pendingExits)}`);
 			}
 
 			// Nothing to expand - if we're sitting right where an auto-expand

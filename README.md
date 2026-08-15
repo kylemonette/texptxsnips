@@ -1,6 +1,8 @@
 # TeXPtxSnips
 
-Snippet expansion for LaTeX and PreTeXt in VS Code. Snippets live in plain text `.snips` files you edit yourself, using regex triggers and inline JavaScript for dynamic expansion — the same general model as [HyperSnips](https://github.com/Oskar-Idland/hsnips), reimplemented from scratch to fix a few things that don't hold up well in practice: math-context detection that misfires on ordinary LaTeX, and snippet expansion that doesn't undo cleanly.
+Snippet expansion for LaTeX and PreTeXt in VS Code.
+Snippets live in plain text `.snips` files you edit yourself, using regex triggers and inline JavaScript for dynamic expansion.
+This is the same general model as [HyperSnips](https://github.com/Oskar-Idland/hsnips), which was inspiration for this project.
 
 ## Quick start
 
@@ -77,29 +79,24 @@ A file's name (without `.snips`) is matched against the document's VS Code langu
 
 ## Math-context detection
 
-Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[` — so `\\[1em]` in a `tabular` row is correctly read as plain text, not as the start of display math, which was a bug in HyperSnips. The `\text{}`, `\mathrm{}`, and similar font/language-switching commands are also handled, including math nested back inside them (`\text{the value $x$}`).
+Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[`.
+This was done to prevent strings such as `\\[1em]` in a `tabular` row (to add whitespace after the row) being interpreted as the start of display math.
+The `\text{}`, `\mathrm{}`, and similar font/language-switching commands are also handled, including math nested back inside them (`\text{the value $x$}`).
 
 ## Multi-field snippets
 
 A snippet is expanded one of two ways, chosen automatically by how many distinct tabstops it has:
 
-- **Two or more** like `\frac{$1}{$2}` gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
-- **Zero or one** like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work (typing a subscript, then a superscript, without leaving the outer expression); nesting a real multi-tabstop session inside another one is a VS Code limitation with no reliable extension-side fix, so simple snippets deliberately avoid ever opening one.
-
-A single-field snippet's own tabstop is a real one, but there is no second stop for VS Code to Tab to afterward — pressing Tab with nothing left to expand jumps past whatever trailing text follows the tabstop (e.g. `mk`'s closing `$`) instead of inserting a literal tab.
+- **Two or more** tabstops like `\frac{$1}{$2}` gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
+- **Zero or one** tabstops like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work (typing a subscript, then a superscript, without leaving the outer expression).
 
 ## Manual expansion
 
-A snippet without `A` doesn't expand as you type it — it shows up in the completion list, and pressing **Tab** right after typing it (with no completion widget or other snippet session open) expands it directly, independent of your `editor.tabCompletion`/quick-suggestions settings.
+A snippet without `A` doesn't expand as you type it.
+Pressing **Tab** right after typing it expands it directly.
 
 ## Commands and settings
 
 - **TeXPtxSnips: Reload Snippets** — re-read all `.snips` files (also happens automatically on save).
 - **TeXPtxSnips: Open Snippets Directory** — create (if needed) and reveal the snippets folder.
 - `texptxsnips.snippetsDir` — override the snippets folder. Defaults to a `texptxsnips` folder alongside VS Code's own `User` directory.
-
-## Known limitations
-
-- Multi-line regex triggers (matching across several lines of context) aren't supported — a trigger only ever sees the current line up to the cursor.
-- If you trigger a snippet while genuinely still inside another live multi-field snippet's tabstop (i.e. you haven't Tabbed/clicked out of it), VS Code can lose track of that outer snippet's remaining tabstops. This is the same underlying VS Code limitation referenced above; it doesn't affect the common case of chaining simple snippets, only nesting one multi-field template inside another's still-open field.
-- PreTeXt support is structural (language registration, `pretext.snips` loading) but ships no default snippets — bring your own.

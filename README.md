@@ -77,14 +77,14 @@ A file's name (without `.snips`) is matched against the document's VS Code langu
 
 ## Math-context detection
 
-Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[` — so `\\[1em]` in a `tabular` row is correctly read as plain text, not as the start of display math, which is the specific bug that motivated writing this from scratch rather than adapting an existing math-context heuristic. `\text{}`, `\mathrm{}`, and similar font/language-switching commands are also handled, including math nested back inside them (`\text{the value $x$}`).
+Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[` — so `\\[1em]` in a `tabular` row is correctly read as plain text, not as the start of display math, which was a bug in HyperSnips. The `\text{}`, `\mathrm{}`, and similar font/language-switching commands are also handled, including math nested back inside them (`\text{the value $x$}`).
 
 ## Multi-field snippets
 
 A snippet is expanded one of two ways, chosen automatically by how many distinct tabstops it has:
 
-- **Two or more** (`\frac{$1}{$2}`, a `table`/`figure` template, a theorem environment with a title and a body) gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
-- **Zero or one** (`\pi`, `mk`'s `\$$1\$`) is inserted as a plain edit with the cursor placed directly, and — this is the part worth knowing about — is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work (typing a subscript, then a superscript, without leaving the outer expression); nesting a real multi-tabstop session inside another one is a VS Code limitation with no reliable extension-side fix, so simple snippets deliberately avoid ever opening one.
+- **Two or more** like `\frac{$1}{$2}` gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
+- **Zero or one** like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work (typing a subscript, then a superscript, without leaving the outer expression); nesting a real multi-tabstop session inside another one is a VS Code limitation with no reliable extension-side fix, so simple snippets deliberately avoid ever opening one.
 
 A single-field snippet's own tabstop is a real one, but there is no second stop for VS Code to Tab to afterward — pressing Tab with nothing left to expand jumps past whatever trailing text follows the tabstop (e.g. `mk`'s closing `$`) instead of inserting a literal tab.
 

@@ -43,22 +43,28 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Since auto-expand never starts a real snippet session, there's no
 	// native tabstop for Tab to jump past afterwards either - so we track
-	// our own lightweight "exit point" instead: the trailing static text of
-	// the *first* snippet in the current unbroken typing run, so that
-	// pressing Tab with nothing left to expand can still jump past it.
+	// our own lightweight "exit points" instead: the trailing static text of
+	// every snippet-with-a-placeholder expanded so far in the current
+	// unbroken typing run, innermost last. Chaining a snippet that itself
+	// has a placeholder (e.g. a fraction's denominator) inside another
+	// (e.g. mk's $ $) nests a second trailing boundary between the cursor
+	// and the outer one, so a single flat suffix isn't enough - each Tab
+	// press with nothing left to expand pops and jumps past one level.
 	// Kept as text rather than a length because it can contain newlines
 	// that a plain character offset can't walk. autoRunEnd tracks the run
-	// the same way nativeSessionEnd does; pendingExitSuffix is fixed by
-	// the run's first expansion and stays put through any chained/nested ones
-	// within the same run.
+	// the same way nativeSessionEnd does.
 	let autoRunEnd: vscode.Position | undefined;
-	let pendingExitSuffix: string | undefined;
+	let pendingExits: string[] = [];
 
 	const reportErrors = (errors: string[]) => {
 		if (errors.length === 0) {return;}
 		output.appendLine(errors.join('\n'));
 		output.show(true);
 	};
+
+	// Temporary diagnostic tracing for the run-tracking state machine.
+	const log = (msg: string) => output.appendLine(msg);
+	const posStr = (p: vscode.Position | undefined) => p ? `${p.line}:${p.character}` : 'undefined';
 
 	const reload = async () => reportErrors(await store.load());
 	reload();
@@ -100,6 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
 	async function expandMatch(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
 		const text = generateText(match, document);
 		const resolved = resolveTemplate(text);
+		log(`expandMatch "${match.snippet.description}" range=[${match.range.start.line}:${match.range.start.character},${match.range.end.line}:${match.range.end.character}) resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount} firstPlaceholderOffset=${resolved.firstPlaceholderOffset}`);
 
 		if (resolved.placeholderCount >= 2) {
 			// A single insertSnippet call over the trigger range replaces and
@@ -109,9 +116,10 @@ export function activate(context: vscode.ExtensionContext) {
 				? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
 				: undefined;
 			// A real session handles its own navigation now; any pending
-			// plain-text exit point from before is no longer relevant.
+			// plain-text exit points from before are no longer relevant.
 			autoRunEnd = undefined;
-			pendingExitSuffix = undefined;
+			pendingExits = [];
+			log(`  -> native session; nativeSessionEnd=${posStr(nativeSessionEnd)} autoRunEnd/pendingExits cleared`);
 			return;
 		}
 
@@ -121,14 +129,21 @@ export function activate(context: vscode.ExtensionContext) {
 		editor.selection = new vscode.Selection(cursor, cursor);
 
 		if (autoRunEnd === undefined) {
-			// First expansion of a fresh run: remember the trailing static
-			// text after the cursor.
-			pendingExitSuffix = resolved.firstPlaceholderOffset !== undefined
-				? resolved.text.slice(resolved.firstPlaceholderOffset)
-				: undefined;
+			// First expansion of a fresh run: start the exit stack from
+			// scratch with this one's own trailing text, if it has any.
+			pendingExits = resolved.firstPlaceholderOffset !== undefined ? [resolved.text.slice(resolved.firstPlaceholderOffset)] : [];
+			log(`  -> plain, fresh run; cursor=${posStr(cursor)} pendingExits=${JSON.stringify(pendingExits)}`);
+		} else {
+			// Chained within an existing run: a snippet with its own
+			// placeholder (e.g. a fraction's denominator) nests a new
+			// trailing boundary inside whatever was already pending: push
+			// it as the new innermost level. One with no placeholder of its
+			// own (e.g. plain text like \times) doesn't add a new boundary.
+			if (resolved.firstPlaceholderOffset !== undefined) {
+				pendingExits.push(resolved.text.slice(resolved.firstPlaceholderOffset));
+			}
+			log(`  -> plain, chained; cursor=${posStr(cursor)} pendingExits=${JSON.stringify(pendingExits)}`);
 		}
-		// Chained/nested expansions within the same run leave
-		// pendingExitSuffix alone - it still refers to the outermost one.
 		autoRunEnd = cursor;
 	}
 
@@ -146,7 +161,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (event.reason !== undefined) {
 				nativeSessionEnd = undefined;
 				autoRunEnd = undefined;
-				pendingExitSuffix = undefined;
+				pendingExits = [];
 				return;
 			}
 
@@ -156,6 +171,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// there, or backspacing/typing over content right before it -
 			// keeps the run going; an edit elsewhere breaks it.
 			const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
+			log(`onDidChangeTextDocument expanding=${expanding} changes=${event.contentChanges.length} change=${change ? `range=[${change.range.start.line}:${change.range.start.character},${change.range.end.line}:${change.range.end.character}) text=${JSON.stringify(change.text)}` : 'n/a'} autoRunEnd=${posStr(autoRunEnd)} nativeSessionEnd=${posStr(nativeSessionEnd)}`);
 			const advanceIfTouching = (end: vscode.Position): vscode.Position | undefined => {
 				if (change === undefined || !change.range.end.isEqual(end)) {return undefined;}
 				return advancePosition(change.range.start, change.text);
@@ -165,15 +181,23 @@ export function activate(context: vscode.ExtensionContext) {
 				// Whitespace also breaks this one: it only exists to protect a
 				// real Tab-started session, and once the user has moved on to
 				// typing unrelated content there's no reason to keep guarding it.
+				const before = nativeSessionEnd;
 				nativeSessionEnd = change && !/\s/.test(change.text) ? advanceIfTouching(nativeSessionEnd) : undefined;
+				if (nativeSessionEnd === undefined) {log(`  nativeSessionEnd broken (was ${posStr(before)})`);}
 			}
 			if (!expanding && autoRunEnd) {
 				// No whitespace check here: a space or newline can be part of
 				// the same ongoing expression (e.g. "5x^2 + 4x^2", or content
 				// spanning multiple lines inside dm) - only an edit that
 				// doesn't touch the tracked position means we've moved on.
+				const before = autoRunEnd;
 				autoRunEnd = advanceIfTouching(autoRunEnd);
-				if (autoRunEnd === undefined) {pendingExitSuffix = undefined;}
+				if (autoRunEnd === undefined) {
+					log(`  autoRunEnd broken (was ${posStr(before)}); pendingExits cleared (was ${JSON.stringify(pendingExits)})`);
+					pendingExits = [];
+				} else {
+					log(`  autoRunEnd advanced ${posStr(before)} -> ${posStr(autoRunEnd)}`);
+				}
 			}
 
 			if (expanding) {return;}
@@ -208,10 +232,12 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('texptxsnips.expandOnTab', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || !editor.selection.isEmpty || !LANGUAGES.includes(editor.document.languageId)) {
+				log(`expandOnTab: no editor/non-empty selection/wrong language -> fallback tab`);
 				await vscode.commands.executeCommand('tab');
 				return;
 			}
 
+			log(`expandOnTab: cursor=${posStr(editor.selection.active)} autoRunEnd=${posStr(autoRunEnd)} pendingExits=${JSON.stringify(pendingExits)} nativeSessionEnd=${posStr(nativeSessionEnd)}`);
 			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
 			if (matches.length > 0) {
 				// The keybinding only fires when !inSnippetMode, so no outer
@@ -226,15 +252,20 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			// Nothing to expand - if we're sitting right where an auto-expand
-			// run left off, jump past its trailing static text instead of inserting a literal tab.
-			if (pendingExitSuffix !== undefined && autoRunEnd !== undefined && editor.selection.active.isEqual(autoRunEnd)) {
-				const exit = advancePosition(autoRunEnd, pendingExitSuffix);
+			// run left off, jump past the innermost pending trailing text
+			// (e.g. a chained fraction's own closing }) instead of inserting
+			// a literal tab. If that leaves an outer one still pending (e.g.
+			// mk's closing $), a further Tab press exits that one too.
+			if (pendingExits.length > 0 && autoRunEnd !== undefined && editor.selection.active.isEqual(autoRunEnd)) {
+				const suffix = pendingExits.pop()!;
+				const exit = advancePosition(autoRunEnd, suffix);
+				log(`expandOnTab: popped ${JSON.stringify(suffix)}, exiting to ${posStr(exit)}, ${pendingExits.length} level(s) still pending`);
 				editor.selection = new vscode.Selection(exit, exit);
-				autoRunEnd = undefined;
-				pendingExitSuffix = undefined;
+				autoRunEnd = exit;
 				return;
 			}
 
+			log(`expandOnTab: no match, no pending exit -> fallback tab`);
 			await vscode.commands.executeCommand('tab');
 		}),
 		vscode.commands.registerCommand('texptxsnips.reloadSnippets', async () => {

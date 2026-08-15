@@ -28,6 +28,10 @@ function findMatch(snippet: Snippet, document: vscode.TextDocument, position: vs
 	if (typeof snippet.trigger === 'string') {
 		if (!textBeforeCursor.endsWith(snippet.trigger)) {return null;}
 		start = textBeforeCursor.length - snippet.trigger.length;
+		// i/w/b only constrain string triggers. A regex trigger's pattern is
+		// the sole boundary mechanism (e.g. a (?<!\\) lookbehind) - the flags
+		// still control auto-expand/math-gating/etc, just not this check.
+		if (!hasValidBoundary(textBeforeCursor, start, snippet.flags)) {return null;}
 	} else {
 		const m = snippet.trigger.exec(textBeforeCursor);
 		if (!m) {return null;}
@@ -35,7 +39,6 @@ function findMatch(snippet: Snippet, document: vscode.TextDocument, position: vs
 		groups = m;
 	}
 
-	if (!hasValidBoundary(textBeforeCursor, start, snippet.flags)) {return null;}
 	if (snippet.flags.mathOnly && !mathContext.isMath(document, position)) {return null;}
 
 	return {

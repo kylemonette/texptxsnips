@@ -7,6 +7,8 @@ export interface ResolvedTemplate {
 	cursorOffset: number;
 	/** Offset of the lowest-numbered tabstop other than $0, if any. */
 	firstPlaceholderOffset: number | undefined;
+	/** Count of distinct tabstop numbers other than $0 (repeats of the same $N count once). */
+	placeholderCount: number;
 }
 
 /**
@@ -20,6 +22,7 @@ export function resolveTemplate(template: string): ResolvedTemplate {
 	let cursorOffset: number | undefined;
 	let firstPlaceholderOffset: number | undefined;
 	let firstPlaceholderNum: number | undefined;
+	const placeholderNums = new Set<number>();
 	let i = 0;
 	while (i < template.length) {
 		const c = template[i];
@@ -53,9 +56,12 @@ export function resolveTemplate(template: string): ResolvedTemplate {
 				if (braced && template[j] === '}') {j++;}
 				if (num === 0) {
 					cursorOffset = out.length;
-				} else if (firstPlaceholderNum === undefined || num < firstPlaceholderNum) {
-					firstPlaceholderNum = num;
-					firstPlaceholderOffset = out.length;
+				} else {
+					placeholderNums.add(num);
+					if (firstPlaceholderNum === undefined || num < firstPlaceholderNum) {
+						firstPlaceholderNum = num;
+						firstPlaceholderOffset = out.length;
+					}
 				}
 				out += defaultText;
 				i = j;
@@ -65,7 +71,7 @@ export function resolveTemplate(template: string): ResolvedTemplate {
 		out += c;
 		i += 1;
 	}
-	return { text: out, cursorOffset: cursorOffset ?? out.length, firstPlaceholderOffset };
+	return { text: out, cursorOffset: cursorOffset ?? out.length, firstPlaceholderOffset, placeholderCount: placeholderNums.size };
 }
 
 /** Advances a Position by inserted text, accounting for embedded newlines. */

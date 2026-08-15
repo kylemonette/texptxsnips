@@ -4,10 +4,12 @@
   "description": "Snippets for LaTeX and PreTeXt documents.",
   "version": "0.0.1",
   "publisher": "kylemonette",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/kylemonette/texptxsnips"
   },
+  "homepage": "https://github.com/kylemonette/texptxsnips#readme",
   "bugs": {
     "url": "https://github.com/kylemonette/texptxsnips/issues"
   },
@@ -15,7 +17,14 @@
     "vscode": "^1.125.0"
   },
   "categories": [
-    "Other"
+    "Snippets"
+  ],
+  "keywords": [
+    "latex",
+    "pretext",
+    "snippets",
+    "math",
+    "autocomplete"
   ],
   "activationEvents": [
     "onLanguage:latex",

@@ -46,7 +46,10 @@ function compileBodySource(body: string): string {
 	while ((match = CODE_RE.exec(body))) {
 		out += `out+=${JSON.stringify(body.slice(lastIndex, match.index))};\n`;
 		out += `rv=undefined;\n${match[1]}\n`;
-		out += 'out+=__esc(rv);\n';
+		// rv is spliced in raw, not escaped: a code block is allowed to
+		// build literal $1/}/\\ snippet syntax (e.g. programmatically
+		// inserting a real tabstop into its own output).
+		out += 'out+=String(rv);\n';
 		lastIndex = CODE_RE.lastIndex;
 	}
 	out += `out+=${JSON.stringify(body.slice(lastIndex))};\n`;
@@ -61,7 +64,6 @@ function compileBodySource(body: string): string {
  */
 function compileGenerators(globalCode: string, bodies: string[], source: string): { generators: SnippetGenerator[]; errors: string[] } {
 	const src = `(function(){
-function __esc(v){return String(v).replace(/[\\\\$}]/g, c => '\\\\' + c);}
 ${globalCode}
 return [
 ${bodies.map(compileBodySource).join(',\n')}

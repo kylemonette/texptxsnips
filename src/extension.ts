@@ -88,24 +88,33 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	}
 
-	// Starts a real native tabstop session. Only safe where no other live
-	// session can conflict with it (Tab is disabled while inSnippetMode).
-	async function applyExpansion(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
+	// A snippet with 2+ distinct tabstops needs real Tab-to-jump navigation
+	// between its fields (e.g. table, tplot, the theorem-family
+	// environments), so it gets a genuine native session - protected by
+	// nativeSessionEnd against a later nested auto-expand the same way a
+	// Tab-gated one already is. A snippet with 0-1 tabstops has nothing to
+	// navigate between, so it's resolved as plain text with the cursor
+	// placed manually instead: this never starts a native session, so
+	// chaining several of these in a row (e.g. multiple inline math
+	// shortcuts in one $ $) is always safe regardless of what triggered it.
+	async function expandMatch(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
 		const text = generateText(match, document);
 		const resolved = resolveTemplate(text);
-		// A single insertSnippet call over the trigger range replaces and
-		// expands atomically, so one undo reverts the whole expansion.
-		await editor.insertSnippet(new vscode.SnippetString(text), match.range);
-		nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
-			? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
-			: undefined;
-	}
 
-	// Never starts a native session, so it's always safe to call regardless
-	// of what else is going on - used for every typing-triggered expansion.
-	async function applyPlainExpansion(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
-		const text = generateText(match, document);
-		const resolved = resolveTemplate(text);
+		if (resolved.placeholderCount >= 2) {
+			// A single insertSnippet call over the trigger range replaces and
+			// expands atomically, so one undo reverts the whole expansion.
+			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
+			nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
+				? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
+				: undefined;
+			// A real session handles its own navigation now; any pending
+			// plain-text exit point from before is no longer relevant.
+			autoRunEnd = undefined;
+			pendingExitSuffix = undefined;
+			return;
+		}
+
 		await editor.edit((eb) => eb.replace(match.range, resolved.text));
 		const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
 		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
@@ -187,7 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 			expanding = true;
 			try {
-				await applyPlainExpansion(editor, auto, event.document);
+				await expandMatch(editor, auto, event.document);
 			} finally {
 				expanding = false;
 			}
@@ -209,7 +218,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// session can be live here - always safe to expand directly.
 				expanding = true;
 				try {
-					await applyExpansion(editor, matches[0], editor.document);
+					await expandMatch(editor, matches[0], editor.document);
 				} finally {
 					expanding = false;
 				}

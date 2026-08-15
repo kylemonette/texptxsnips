@@ -1,0 +1,23 @@
+# Demo snippets for smoke-testing the extension. Not shipped with the
+# extension itself - copy into your snippets directory to try them out.
+
+priority 10
+snippet mk "inline math" Ai
+\$$1\$$0
+endsnippet
+
+snippet dm "display math" Ab
+\[
+$1
+\]$0
+endsnippet
+
+# regression check: typing "\\[1em]" inside a tabular row must NOT trigger
+# math context, even though it contains "\[" as a substring.
+snippet `([a-zA-Z])(\d)` "auto subscript" Aim
+``rv=m[1]``_``rv=m[2]``$0
+endsnippet
+
+snippet sr "squared" Aim
+^2
+endsnippet

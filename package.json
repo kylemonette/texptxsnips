@@ -3,21 +3,56 @@
   "displayName": "TeXPtxSnips",
   "description": "Snippets for LaTeX and PreTeXt documents.",
   "version": "0.0.1",
+  "publisher": "kylemonette",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kylemonette/texptxsnips"
+  },
+  "bugs": {
+    "url": "https://github.com/kylemonette/texptxsnips/issues"
+  },
   "engines": {
     "vscode": "^1.125.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:latex",
+    "onLanguage:pretext"
+  ],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "latex",
+        "extensions": [".tex"]
+      },
+      {
+        "id": "pretext",
+        "extensions": [".ptx"]
+      }
+    ],
     "commands": [
       {
-        "command": "texptxsnips.helloWorld",
-        "title": "Hello World"
+        "command": "texptxsnips.reloadSnippets",
+        "title": "TeXPtxSnips: Reload Snippets"
+      },
+      {
+        "command": "texptxsnips.openSnippetsDir",
+        "title": "TeXPtxSnips: Open Snippets Directory"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "TeXPtxSnips",
+      "properties": {
+        "texptxsnips.snippetsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Directory containing <language>.snips files (e.g. latex.snips, pretext.snips, all.snips). Defaults to a texptxsnips folder alongside VS Code's own User directory."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

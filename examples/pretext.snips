@@ -1,0 +1,9 @@
+# Demo snippet for smoke-testing PreTeXt support.
+
+snippet thm "theorem" Ab
+<theorem>
+    <statement>
+        <p>$1</p>
+    </statement>
+</theorem>$0
+endsnippet

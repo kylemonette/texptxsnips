@@ -1,0 +1,11 @@
+# Snippets here are merged into every language's snippet list.
+
+global
+function today() {
+	return new Date().toISOString().slice(0, 10);
+}
+endglobal
+
+snippet date "today's date" A
+``today()``$0
+endsnippet

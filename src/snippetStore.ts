@@ -6,8 +6,7 @@ import { Snippet } from './types';
 
 /**
  * Loads `<languageId>.snips` files from the snippets directory. Snippets
- * defined in `all.snips` are merged into every language's list, matching
- * the filename-as-scope convention from hsnips.
+ * defined in `all.snips` are merged into every language's list.
  */
 export class SnippetStore {
 	private byLanguage = new Map<string, Snippet[]>();

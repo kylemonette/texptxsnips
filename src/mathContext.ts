@@ -14,7 +14,7 @@ const MATH_ENVIRONMENTS = new Set([
 // Commands whose brace argument switches back to prose/text mode.
 // \mathrm, \mathbf, \operatorname etc. are math-symbol formatting, not a
 // language switch, so they stay in math context and are deliberately excluded.
-const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'textnormal', 'mbox', 'intertext']);
+const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 'mbox', 'intertext']);
 
 type Frame =
 	| { kind: 'root' }
@@ -43,9 +43,7 @@ function currentMode(stack: Frame[]): Mode {
 
 /**
  * Scans LaTeX source left to right, tokenizing control sequences as atomic
- * units before ever comparing substrings. This is what keeps `\\[1em]` from
- * being misread as the display-math opener `\[`: the leading `\\` is
- * consumed as one control-symbol token, leaving `[` as a plain character.
+ * units before ever comparing substrings.
  */
 function scanLine(text: string, stack: Frame[]): Frame[] {
 	const out = stack.slice();

@@ -28,7 +28,7 @@ function parseHeader(line: string): Header | null {
 
 	let trigger: string | RegExp;
 	if (regexSrc !== undefined) {
-		// anchor to the end of the scanned text, like hsnips, so a match
+		// anchor to the end of the scanned text, so a match
 		// always ends exactly at the cursor
 		trigger = new RegExp(regexSrc.endsWith('$') ? regexSrc : regexSrc + '$');
 	} else {
@@ -57,7 +57,7 @@ function compileBodySource(body: string): string {
 /**
  * Compiles a file's `global` block and every snippet body into one JS
  * source, evaluated in a single Function call so `global` helpers close
- * over every snippet generator - mirrors hsnips' code-interpolation model.
+ * over every snippet generator.
  */
 function compileGenerators(globalCode: string, bodies: string[], source: string): { generators: SnippetGenerator[]; errors: string[] } {
 	const src = `(function(){

@@ -44,13 +44,13 @@ export function activate(context: vscode.ExtensionContext) {
 	// Since auto-expand never starts a real snippet session, there's no
 	// native tabstop for Tab to jump past afterwards either - so we track
 	// our own lightweight "exit point" instead: the trailing static text of
-	// the *first* snippet in the current unbroken typing run (e.g. mk's
-	// closing $), so that pressing Tab with nothing left to expand can
-	// still jump past it. Kept as text rather than a length because it can
-	// contain newlines (e.g. dm's "\n\]") that a plain character offset
-	// can't walk. autoRunEnd tracks the run the same way nativeSessionEnd
-	// does; pendingExitSuffix is fixed by the run's first expansion and
-	// stays put through any chained/nested ones within the same run.
+	// the *first* snippet in the current unbroken typing run, so that
+	// pressing Tab with nothing left to expand can still jump past it.
+	// Kept as text rather than a length because it can contain newlines
+	// that a plain character offset can't walk. autoRunEnd tracks the run
+	// the same way nativeSessionEnd does; pendingExitSuffix is fixed by
+	// the run's first expansion and stays put through any chained/nested ones
+	// within the same run.
 	let autoRunEnd: vscode.Position | undefined;
 	let pendingExitSuffix: string | undefined;
 
@@ -113,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		if (autoRunEnd === undefined) {
 			// First expansion of a fresh run: remember the trailing static
-			// text after the cursor (e.g. mk's closing $).
+			// text after the cursor.
 			pendingExitSuffix = resolved.firstPlaceholderOffset !== undefined
 				? resolved.text.slice(resolved.firstPlaceholderOffset)
 				: undefined;
@@ -217,8 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			// Nothing to expand - if we're sitting right where an auto-expand
-			// run left off, jump past its trailing static text (e.g. mk's
-			// closing $) instead of inserting a literal tab.
+			// run left off, jump past its trailing static text instead of inserting a literal tab.
 			if (pendingExitSuffix !== undefined && autoRunEnd !== undefined && editor.selection.active.isEqual(autoRunEnd)) {
 				const exit = advancePosition(autoRunEnd, pendingExitSuffix);
 				editor.selection = new vscode.Selection(exit, exit);

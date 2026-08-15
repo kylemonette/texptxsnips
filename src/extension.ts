@@ -39,7 +39,20 @@ export function activate(context: vscode.ExtensionContext) {
 	// matters for a *different* live session: one started deliberately via
 	// Tab (texptxsnips.expandOnTab), whose own remaining tabstops an
 	// auto-expand triggered while typing inside it could still corrupt.
-	let contiguousRunEnd: vscode.Position | undefined;
+	let nativeSessionEnd: vscode.Position | undefined;
+
+	// Since auto-expand never starts a real snippet session, there's no
+	// native tabstop for Tab to jump past afterwards either - so we track
+	// our own lightweight "exit point" instead: the trailing static text of
+	// the *first* snippet in the current unbroken typing run (e.g. mk's
+	// closing $), so that pressing Tab with nothing left to expand can
+	// still jump past it. Kept as text rather than a length because it can
+	// contain newlines (e.g. dm's "\n\]") that a plain character offset
+	// can't walk. autoRunEnd tracks the run the same way nativeSessionEnd
+	// does; pendingExitSuffix is fixed by the run's first expansion and
+	// stays put through any chained/nested ones within the same run.
+	let autoRunEnd: vscode.Position | undefined;
+	let pendingExitSuffix: string | undefined;
 
 	const reportErrors = (errors: string[]) => {
 		if (errors.length === 0) {return;}
@@ -83,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 		// A single insertSnippet call over the trigger range replaces and
 		// expands atomically, so one undo reverts the whole expansion.
 		await editor.insertSnippet(new vscode.SnippetString(text), match.range);
-		contiguousRunEnd = resolved.firstPlaceholderOffset !== undefined
+		nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
 			? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
 			: undefined;
 	}
@@ -97,6 +110,17 @@ export function activate(context: vscode.ExtensionContext) {
 		const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
 		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
 		editor.selection = new vscode.Selection(cursor, cursor);
+
+		if (autoRunEnd === undefined) {
+			// First expansion of a fresh run: remember the trailing static
+			// text after the cursor (e.g. mk's closing $).
+			pendingExitSuffix = resolved.firstPlaceholderOffset !== undefined
+				? resolved.text.slice(resolved.firstPlaceholderOffset)
+				: undefined;
+		}
+		// Chained/nested expansions within the same run leave
+		// pendingExitSuffix alone - it still refers to the outermost one.
+		autoRunEnd = cursor;
 	}
 
 	context.subscriptions.push(
@@ -111,20 +135,29 @@ export function activate(context: vscode.ExtensionContext) {
 			// itself) - auto-expanding in response would make undo a no-op.
 			// Its edit shape also doesn't mean anything for run-tracking.
 			if (event.reason !== undefined) {
-				contiguousRunEnd = undefined;
+				nativeSessionEnd = undefined;
+				autoRunEnd = undefined;
+				pendingExitSuffix = undefined;
 				return;
 			}
 
-			// applyExpansion() already updates contiguousRunEnd itself for the
-			// edit it makes; only track plain user keystrokes here. A
-			// keystroke that doesn't land exactly at the tracked end, or that
-			// is whitespace, breaks the run.
-			if (!expanding && contiguousRunEnd) {
-				const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
-				if (change && change.range.isEmpty && change.range.start.isEqual(contiguousRunEnd) && !/\s/.test(change.text)) {
-					contiguousRunEnd = advancePosition(contiguousRunEnd, change.text);
+			// applyExpansion()/applyPlainExpansion() already update their own
+			// tracked end for the edit they make; only track plain user
+			// keystrokes here. A keystroke that doesn't land exactly at the
+			// tracked end, or that is whitespace, breaks the run.
+			const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
+			const isPlainRunKeystroke = (end: vscode.Position) =>
+				change !== undefined && change.range.isEmpty && change.range.start.isEqual(end) && !/\s/.test(change.text);
+
+			if (!expanding && nativeSessionEnd) {
+				nativeSessionEnd = isPlainRunKeystroke(nativeSessionEnd) ? advancePosition(nativeSessionEnd, change!.text) : undefined;
+			}
+			if (!expanding && autoRunEnd) {
+				if (isPlainRunKeystroke(autoRunEnd)) {
+					autoRunEnd = advancePosition(autoRunEnd, change!.text);
 				} else {
-					contiguousRunEnd = undefined;
+					autoRunEnd = undefined;
+					pendingExitSuffix = undefined;
 				}
 			}
 
@@ -135,14 +168,12 @@ export function activate(context: vscode.ExtensionContext) {
 			// editor.selection isn't guaranteed to have caught up with the
 			// document edit yet at this point, so derive the cursor position
 			// from the change itself rather than trusting the selection.
-			if (event.contentChanges.length !== 1) {return;}
-			const change = event.contentChanges[0];
-			if (change.range.start.line !== change.range.end.line || change.text.includes('\n')) {return;}
+			if (change === undefined || change.range.start.line !== change.range.end.line || change.text.includes('\n')) {return;}
 			const position = change.range.start.translate(0, change.text.length);
 
 			// A session started via Tab may still be live at this position -
-			// see contiguousRunEnd's comment for why we can't safely edit here.
-			if (contiguousRunEnd !== undefined) {return;}
+			// see nativeSessionEnd's comment for why we can't safely edit here.
+			if (nativeSessionEnd !== undefined) {return;}
 
 			const matches = getMatches(store.getSnippets(event.document.languageId), event.document, position, mathContext);
 			const auto = matches.find((m) => m.snippet.flags.auto);
@@ -167,19 +198,30 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
-			if (matches.length === 0) {
-				await vscode.commands.executeCommand('tab');
+			if (matches.length > 0) {
+				// The keybinding only fires when !inSnippetMode, so no outer
+				// session can be live here - always safe to expand directly.
+				expanding = true;
+				try {
+					await applyExpansion(editor, matches[0], editor.document);
+				} finally {
+					expanding = false;
+				}
 				return;
 			}
 
-			// The keybinding only fires when !inSnippetMode, so no outer
-			// session can be live here - always safe to expand directly.
-			expanding = true;
-			try {
-				await applyExpansion(editor, matches[0], editor.document);
-			} finally {
-				expanding = false;
+			// Nothing to expand - if we're sitting right where an auto-expand
+			// run left off, jump past its trailing static text (e.g. mk's
+			// closing $) instead of inserting a literal tab.
+			if (pendingExitSuffix !== undefined && autoRunEnd !== undefined && editor.selection.active.isEqual(autoRunEnd)) {
+				const exit = advancePosition(autoRunEnd, pendingExitSuffix);
+				editor.selection = new vscode.Selection(exit, exit);
+				autoRunEnd = undefined;
+				pendingExitSuffix = undefined;
+				return;
 			}
+
+			await vscode.commands.executeCommand('tab');
 		}),
 		vscode.commands.registerCommand('texptxsnips.reloadSnippets', async () => {
 			store.setDir(getSnippetsDir());

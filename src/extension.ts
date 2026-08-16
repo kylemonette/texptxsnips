@@ -84,35 +84,13 @@ export function activate(context: vscode.ExtensionContext) {
 		const resolved = resolveTemplate(text);
 		log(() => `expandMatch "${match.snippet.description}" resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount}`);
 
-		// A raw editor.edit() + manual selection assignment is cheap, but a
-		// nested one landing inside an already-live native tabstop can desync
-		// VS Code's own tracking of that outer session (it stops seeing the
-		// edit as "still inside the placeholder"), breaking its later Tab
-		// navigation. insertSnippet is the API VS Code's snippet controller
-		// itself expects edits through, so a nested plain expansion is routed
-		// through it too, even though it has nothing to navigate to on its
-		// own - it only needs the native (>=2 tabstop) path's own tracking
-		// when it has tabstops of its own to hand off to.
-		const nestedInNativeSession = runs.isNativeSessionActive(document.uri);
-
-		if (resolved.placeholderCount >= 2 || nestedInNativeSession) {
+		if (resolved.placeholderCount >= 2) {
 			// A single insertSnippet call over the trigger range replaces and
 			// expands atomically, so one undo reverts the whole expansion.
 			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
-
-			if (resolved.placeholderCount >= 2) {
-				const nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
-					? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
-					: undefined;
-				runs.recordNativeExpansion(document.uri, nativeSessionEnd);
-				log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
-			} else {
-				const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
-				const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
-				const ownSuffix = resolved.firstPlaceholderOffset !== undefined ? resolved.text.slice(resolved.firstPlaceholderOffset) : undefined;
-				runs.recordPlainExpansion(document.uri, cursor, ownSuffix);
-				log(() => `  -> plain via insertSnippet (nested in native session); ${runs.debugSnapshot(document.uri)}`);
-			}
+			const bodyLines = resolved.text.split('\n').length - 1;
+			runs.recordNativeExpansion(document.uri, match.range.start.line, match.range.start.line + bodyLines);
+			log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
 			return;
 		}
 
@@ -197,10 +175,17 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			// This command only fires when !inSnippetMode - VS Code's own
+			// confirmation that any native session is genuinely over, which
+			// is the one reliable signal for that (edit-position heuristics
+			// can't tell "moved to another tabstop in the same session" from
+			// "left it entirely"). Safe to confirm unconditionally here.
+			runs.endNativeSession(editor.document.uri);
+
 			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
 			if (matches.length > 0) {
-				// The keybinding only fires when !inSnippetMode, so no outer
-				// session can be live here - always safe to expand directly.
+				// No outer native session can be live here (just confirmed
+				// above), so always safe to expand directly.
 				expanding = true;
 				try {
 					await expandMatch(editor, matches[0], editor.document);

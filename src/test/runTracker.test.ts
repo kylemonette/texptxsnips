@@ -29,15 +29,42 @@ suite('RunTracker', () => {
 		runs.recordPlainExpansion(uriA, new vscode.Position(0, 1), '$');
 		assert.strictEqual(runs.isNativeSessionActive(uriA), false);
 
-		runs.recordNativeExpansion(uriA, new vscode.Position(1, 5));
+		runs.recordNativeExpansion(uriA, 0, 0);
 		assert.strictEqual(runs.isNativeSessionActive(uriA), true);
 
 		// once the native session has ended (only reachable in practice once
-		// VS Code itself reports !inSnippetMode), resume from wherever the
-		// cursor now is and exit mk's own pending $
+		// VS Code itself reports !inSnippetMode, i.e. endNativeSession has
+		// been called), resume from wherever the cursor now is and exit
+		// mk's own pending $
+		runs.endNativeSession(uriA);
 		const exit = runs.tryExit(uriA, new vscode.Position(5, 3));
 		assert.strictEqual(exit?.line, 5);
 		assert.strictEqual(exit?.character, 4);
+	});
+
+	test('a nested plain expansion at a later tabstop (e.g. pi at vector\'s $2) does not prematurely resume the paused outer exit', () => {
+		const runs = new RunTracker();
+		// mk expands: fresh run, own trailing text "$"
+		runs.recordPlainExpansion(uriA, new vscode.Position(0, 1), '$');
+		// a vector snippet (2+ tabstops) expands, chained inside mk, spanning line 0 only
+		runs.recordNativeExpansion(uriA, 0, 0);
+		assert.strictEqual(runs.isNativeSessionActive(uriA), true);
+
+		// user tabs to $2 (no edit fires) and triggers a plain nested
+		// expansion there, e.g. "pi" -> "\pi " - still well within the
+		// native session's own line, so isNativeSessionActive stays true
+		runs.onEdit(uriA, insertion(new vscode.Position(0, 20), 'p'));
+		runs.onEdit(uriA, insertion(new vscode.Position(0, 21), 'i'));
+		assert.strictEqual(runs.isNativeSessionActive(uriA), true, 'typing at a later tabstop on the same line must not look like leaving the session');
+		runs.recordPlainExpansion(uriA, new vscode.Position(0, 24), undefined);
+
+		// the outer mk exit must still be paused, not resumed at the nested
+		// position - only once VS Code confirms the session is truly over
+		// does it become reachable again, from the real exit position
+		assert.strictEqual(runs.tryExit(uriA, new vscode.Position(0, 24)), undefined, 'must not resume at the nested pi position');
+		runs.endNativeSession(uriA);
+		const exit = runs.tryExit(uriA, new vscode.Position(0, 30));
+		assert.strictEqual(exit?.character, 31, 'once truly exited, mk\'s own $ should still be reachable');
 	});
 
 	test('a plain expansion with no placeholder of its own (e.g. \\times) does not add a nesting level', () => {

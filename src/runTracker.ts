@@ -2,15 +2,15 @@ import * as vscode from 'vscode';
 import { advancePosition } from './snippetTemplate';
 
 interface RunState {
-	// Position where a real native tabstop session (2+ distinct
-	// placeholders) started via Tab may still be live. Auto-expand is
-	// gated on this being undefined, since VS Code's snippet controller
-	// can't tell our own edits apart from a nested snippet insertion - any
-	// programmatic edit landing inside its tracked range loses track of
-	// its remaining tabstops. Normal typing doesn't trip this because it
-	// goes through VS Code's own input pipeline rather than an extension's
-	// edit API.
-	nativeSessionEnd?: vscode.Position;
+	// Line span a real native tabstop session (2+ distinct placeholders)
+	// may still be live within. Tracked as a line range rather than a
+	// single point because Tab-navigating between its own tabstops (e.g.
+	// $1 to $2) moves the cursor with no edit event to follow, so a single
+	// tracked position goes stale the moment the user leaves the first
+	// tabstop - any edit still landing within the original lines is
+	// presumed part of the same session. Cleared for certain only once VS
+	// Code itself confirms the session is over (see endNativeSession).
+	nativeSessionLines?: { start: number; end: number };
 	// Position where an unbroken run of plain (0-1 placeholder) auto-expand
 	// chaining currently ends. Plain expansions never start a native
 	// session, so chaining several of them (e.g. multiple inline math
@@ -68,19 +68,24 @@ export class RunTracker {
 	}
 
 	isNativeSessionActive(uri: vscode.Uri): boolean {
-		return this.state(uri).nativeSessionEnd !== undefined;
+		return this.state(uri).nativeSessionLines !== undefined;
 	}
 
 	/** Advances or breaks tracking for a single plain user keystroke. Callers must not invoke this for edits they made themselves. */
 	onEdit(uri: vscode.Uri, change: vscode.TextDocumentContentChangeEvent | undefined) {
 		const state = this.state(uri);
 
-		if (state.nativeSessionEnd !== undefined) {
-			// Whitespace also breaks this one: it only exists to protect a
-			// real Tab-started session, and once the user has moved on to
-			// typing unrelated content there's no reason to keep guarding it.
-			const stillLive = change !== undefined && !/\s/.test(change.text) && change.range.end.isEqual(state.nativeSessionEnd);
-			state.nativeSessionEnd = stillLive ? advancePosition(change!.range.start, change!.text) : undefined;
+		if (state.nativeSessionLines !== undefined) {
+			const lines = state.nativeSessionLines;
+			const stillLive = change !== undefined && change.range.end.line >= lines.start && change.range.end.line <= lines.end;
+			if (stillLive) {
+				// Typing itself can only grow the span (adding newlines
+				// pushes later tabstops further down); it never shrinks it.
+				const addedLines = (change!.text.match(/\n/g) ?? []).length;
+				lines.end += addedLines;
+			} else {
+				state.nativeSessionLines = undefined;
+			}
 		}
 
 		if (state.autoRunEnd !== undefined) {
@@ -96,10 +101,10 @@ export class RunTracker {
 		}
 	}
 
-	/** Records a real native tabstop session starting (2+ distinct placeholders). */
-	recordNativeExpansion(uri: vscode.Uri, nativeSessionEnd: vscode.Position | undefined) {
+	/** Records a real native tabstop session starting (2+ distinct placeholders), spanning lines `startLine` through `endLine` of its initial (pre-edit) rendering. */
+	recordNativeExpansion(uri: vscode.Uri, startLine: number, endLine: number) {
 		const state = this.state(uri);
-		state.nativeSessionEnd = nativeSessionEnd;
+		state.nativeSessionLines = { start: startLine, end: endLine };
 		if (state.autoRunEnd !== undefined && state.pendingExits.length > 0) {
 			state.pausedExits = state.pendingExits;
 		}
@@ -107,9 +112,26 @@ export class RunTracker {
 		state.pendingExits = [];
 	}
 
+	/**
+	 * Confirms a live native session (if any) is over. Only meaningful to
+	 * call once VS Code itself reports !inSnippetMode (i.e. from the
+	 * Tab-exit command's own handler) - that's the one signal here that
+	 * isn't just a position-based guess.
+	 */
+	endNativeSession(uri: vscode.Uri) {
+		this.state(uri).nativeSessionLines = undefined;
+	}
+
 	/** Records a plain-text expansion (0-1 distinct placeholders) whose cursor ended up at `cursor`, with its own trailing text `ownSuffix` if it had a placeholder. */
 	recordPlainExpansion(uri: vscode.Uri, cursor: vscode.Position, ownSuffix: string | undefined) {
 		const state = this.state(uri);
+
+		// Nested inside a still-live native tabstop session: any outer run's
+		// paused exit must stay paused until that session genuinely ends, not
+		// get resumed at this nested position - our own Tab-exit has no way
+		// to fire yet anyway, since native navigation still owns Tab.
+		if (state.nativeSessionLines !== undefined) {return;}
+
 		const resuming = this.tryResume(state);
 		if (state.autoRunEnd === undefined && !resuming) {
 			state.pendingExits = ownSuffix !== undefined ? [ownSuffix] : [];
@@ -153,6 +175,7 @@ export class RunTracker {
 	debugSnapshot(uri: vscode.Uri): string {
 		const s = this.state(uri);
 		const pos = (p: vscode.Position | undefined) => (p ? `${p.line}:${p.character}` : 'undefined');
-		return `nativeSessionEnd=${pos(s.nativeSessionEnd)} autoRunEnd=${pos(s.autoRunEnd)} pendingExits=${JSON.stringify(s.pendingExits)} pausedExits=${JSON.stringify(s.pausedExits)}`;
+		const lines = s.nativeSessionLines ? `${s.nativeSessionLines.start}-${s.nativeSessionLines.end}` : 'undefined';
+		return `nativeSessionLines=${lines} autoRunEnd=${pos(s.autoRunEnd)} pendingExits=${JSON.stringify(s.pendingExits)} pausedExits=${JSON.stringify(s.pausedExits)}`;
 	}
 }

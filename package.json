@@ -79,6 +79,11 @@
           "type": "string",
           "default": "",
           "description": "Directory containing <language>.snips files (e.g. latex.snips, pretext.snips, all.snips). Defaults to a texptxsnips folder alongside VS Code's own User directory."
+        },
+        "texptxsnips.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log internal snippet-expansion tracing to the TeXPtxSnips output channel. Off by default; turn on when diagnosing an expansion/chaining bug."
         }
       }
     }

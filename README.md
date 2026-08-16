@@ -1,21 +1,16 @@
+[![Version](https://vsmarketplacebadges.dev/version-short/KyleMonette.texptxsnips.png)](https://marketplace.visualstudio.com/items?itemName=KyleMonette.texptxsnips)
+[![Version](https://vsmarketplacebadges.dev/rating-short/KyleMonette.texptxsnips.png)](https://marketplace.visualstudio.com/items?itemName=KyleMonette.texptxsnips)
+[![Version](https://vsmarketplacebadges.dev/installs/KyleMonette.texptxsnips.png)](https://marketplace.visualstudio.com/items?itemName=KyleMonette.texptxsnips)
+
 # TeXPtxSnips
 
 Snippet engine for LaTeX and PreTeXt in VS Code.
 
-## Brief History
-The original [HyperSnips](https://github.com/draivin/hsnips) extension by `draivin` was created to incorporate `SirVer`'s [UltiSnips](https://github.com/SirVer/ultisnips) &mdash; a very popular snippet extension in Vim &mdash; into VSCode.
-After the original repository became stale, [OrangeX4](https://github.com/OrangeX4/hsnips) forked this repository and some improvements were made.
-This was then forked *again* by [Oskar-Idland](https://github.com/Oskar-Idland/hsnips), who fixed several tabstop errors, but more have arisen as of recent.
-
-Thus, **TeXPtxSnips** was born.
-It can be seen as both a reworking of Oskar's extension to fix some bugs in addition to offering support to snippets for [PreTeXt](https://pretextbook.org).
-
-As its name implies, **TeXPtxSnips** is only designed for LaTeX and PreTeXt languages.
-
+Forked from [HyperSnips V2](https://github.com/Oskar-Idland/hsnips) (itself descended from [hsnips](https://github.com/draivin/hsnips) and [UltiSnips](https://github.com/SirVer/ultisnips)) to fix a handful of tabstop bugs and add PreTeXt support.
 
 ## Quick start
 
-Run **TeXPtxSnips: Open Snippets Directory** from the Command Palette to create and reveal your snippets folder, then add a file named after the language you want to target — `latex.snips`, `pretext.snips` — or `all.snips` for snippets shared across both. A minimal example:
+Run **TeXPtxSnips: Open Snippets Directory** from the Command Palette, then add a file named after the language you want — `latex.snips`, `pretext.snips` — or `all.snips` for snippets shared across both. A minimal example:
 
 ```
 snippet mk "inline math" A
@@ -23,7 +18,7 @@ snippet mk "inline math" A
 endsnippet
 ```
 
-Type `mk` in a `.tex` file and it expands immediately, with your cursor left between the two `$`. Save the file (or run **TeXPtxSnips: Reload Snippets**) and new snippets take effect right away.
+Type `mk` in a `.tex` file and it expands immediately, cursor left between the two `$`. Save the file (or run **TeXPtxSnips: Reload Snippets**) to pick up changes.
 
 ## The `.snips` file format
 
@@ -35,26 +30,26 @@ body text with $1 $2 tabstops
 endsnippet
 ```
 
-`trigger` is either a bare word (`mk`) or a backtick-delimited regular expression (`` `([a-zA-Z])(\d)` ``). A regex trigger is matched against the text immediately before the cursor and is always anchored to end exactly there, whether or not you write the trailing `$` yourself. Capture groups are available in the body as `m[1]`, `m[2]`, etc.
+`trigger` is a bare word (`mk`) or a backtick-delimited regex (`` `([a-zA-Z])(\d)` ``), matched against the text right before the cursor. Capture groups are available in the body as `m[1]`, `m[2]`, etc.
 
-The body uses standard VS Code snippet syntax for tabstops: `$1`, `${1}`, `${1:default text}`, and `$0` for the final cursor position. A literal `$`, `\`, or `}` in your output needs to be escaped as `\$`, `\\`, `\}`.
+The body uses standard VS Code snippet syntax: `$1`, `${1}`, `${1:default text}`, `$0` for the final cursor position. Escape a literal `$`, `\`, or `}` as `\$`, `\\`, `\}`.
 
 ### Flags
 
 | Flag | Meaning |
 | --- | --- |
-| `A` | Expand immediately once the trigger matches — no need to accept it from a suggestion list or press Tab. |
+| `A` | Expand immediately on match, no Tab needed. |
 | `i` | Match anywhere, including mid-word. |
-| `w` | Require the trigger to sit at a word boundary (not preceded by a letter/digit). This is also the default when neither `i` nor `w` is given. |
-| `b` | Only match when nothing but whitespace precedes the trigger on the line. |
-| `m` | Only match inside LaTeX math mode (see below). |
-| `h` | Hide from the completion list; still expandable via `A` or Tab. Has no effect without one of those. |
+| `w` | Require a word boundary before the trigger. Default when `i`/`w` are both omitted. |
+| `b` | Only match at the start of a line (whitespace before it is fine). |
+| `m` | Only match inside math mode. |
+| `h` | Hide from the completion list; still expands via `A` or Tab. |
 
-`i`, `w`, and `b` only constrain **bare-word** triggers. A regex trigger's own pattern is the entire boundary condition — write a lookbehind like `` `(?<!\\)pi` `` if you need one; the engine doesn't add anything on top. This matches how HyperSnips itself behaves, and it's a distinction worth knowing, since a flag that looks like it should constrain a regex trigger silently won't.
+`i`, `w`, `b` only apply to bare-word triggers — a regex trigger's pattern is the whole boundary condition.
 
 ### Code blocks
 
-A body can splice in JavaScript between double backticks. Assign to `rv` to produce output; the block's return value has no other effect on its own:
+Splice in JavaScript between double backticks; assign to `rv` to produce output:
 
 ```
 snippet `([a-zA-Z])(\d)` "auto subscript" wAm
@@ -62,11 +57,9 @@ snippet `([a-zA-Z])(\d)` "auto subscript" wAm
 endsnippet
 ```
 
-Available inside a code block: `m` (regex capture groups, or `null` for a bare-word trigger), `t` (tabstop contents — reserved for future live re-evaluation; currently always empty), `w` (workspace folder path), `path` (current file path). Whatever you assign to `rv` is spliced into the output as-is, including any snippet syntax it contains — this is deliberate, so a code block can construct real tabstops programmatically (`rv = '\\frac{' + m[1] + '}{$1}$0'`), but it also means a stray `$` in computed text will be read as a tabstop unless you escape it yourself.
+Available inside: `m` (regex capture groups), `t` (tabstop contents), `w` (workspace path), `path` (current file path). `rv` is spliced in as-is, so it can contain real snippet syntax (`rv = '\\frac{' + m[1] + '}{$1}$0'`) — escape any `$` you don't want treated as a tabstop.
 
 ### `global` blocks and `priority`
-
-A `global` / `endglobal` block runs once when the file loads; anything it defines (functions, constants) is visible to every code block in that file:
 
 ```
 global
@@ -80,33 +73,27 @@ snippet date "today's date" A
 endsnippet
 ```
 
-A `priority N` line applies to the single snippet that follows it (default `0`, higher wins when multiple snippets would otherwise match at the same spot).
+A `global` block runs once on load; its functions and constants are visible to every code block in the file. `priority N` applies to the single snippet that follows it (default `0`, higher wins on a tie).
 
 ### File naming and merging
 
-A file's name (without `.snips`) is matched against the document's VS Code language ID: `latex.snips` applies to `.tex` files, `pretext.snips` to `.ptx` files. Snippets in `all.snips` are merged into every language.
+A file's name (minus `.snips`) is matched against the document's language ID — `latex.snips` for `.tex`, `pretext.snips` for `.ptx`. `all.snips` applies everywhere.
 
 ### Syntax highlighting
 
-`.snips` files get their own syntax highlighting out of the box — trigger patterns, flags, tabstops, and `` `` `` code blocks (with real JavaScript highlighting inside them) are all colored.
+`.snips` files get their own highlighting out of the box — triggers, flags, tabstops, and code blocks (with real JavaScript inside).
 
-## Math-context detection
+## Math mode
 
-Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[`.
-This was done to prevent strings such as `\\[1em]` in a `tabular` row (to add whitespace after the row) being interpreted as the start of display math.
-The `\text{}`, `\mathrm{}`, and similar font/language-switching commands are also handled, including math nested back inside them (`\text{the value $x$}`).
+The `m` flag gates a snippet on LaTeX math context — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...) — including `\text{}` correctly switching back to prose mid-formula.
 
 ## Multi-field snippets
 
-A snippet is expanded one of two ways, chosen automatically by how many distinct tabstops it has:
-
-- **Two or more** tabstops like `\frac{$1}{$2}` gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
-- **Zero or one** tabstops like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work.
+Two or more tabstops (`\frac{$1}{$2}`) get a real native Tab session. Zero or one tabstop is inserted as plain text with the cursor placed directly, which is what lets several `A`-flagged shortcuts chain inside one `$...$`.
 
 ## Manual expansion
 
-A snippet without `A` doesn't expand as you type it.
-Pressing **Tab** right after typing it expands it directly.
+A snippet without `A` doesn't expand as you type — press **Tab** right after typing it.
 
 ## Commands and settings
 

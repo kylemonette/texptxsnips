@@ -1,0 +1,15 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: AzureCLI@2
+  displayName: 'Get identity details'
+  inputs:
+    azureSubscription: 'Service Connection KM'
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      az rest -u https://visualstudio.com --resource 499b84ac-1321-427f-aa17-267ca6975798

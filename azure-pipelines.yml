@@ -13,3 +13,4 @@ steps:
     scriptLocation: inlineScript
     inlineScript: |
       az rest -u https://visualstudio.com --resource 499b84ac-1321-427f-aa17-267ca6975798
+

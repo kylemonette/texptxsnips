@@ -6,11 +6,11 @@ pool:
 
 steps:
 - task: AzureCLI@2
-  displayName: 'Get identity details'
+  displayName: 'Fetch True Marketplace VSID'
   inputs:
-    azureSubscription: 'Service Connection KM'
+    azureSubscription: 'Service Connection KM' # Must match your exact connection name
     scriptType: pscore
     scriptLocation: inlineScript
     inlineScript: |
-      az rest -u https://visualstudio.com --resource 499b84ac-1321-427f-aa17-267ca6975798
-
+      # This pulls the active connection payload holding the internal user ID
+      az rest --url "https://app.vssps.visualstudio.com/_apis/connectionData" --resource "499b84ac-1321-427f-aa17-267ca6975798"

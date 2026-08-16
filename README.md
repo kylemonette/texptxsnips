@@ -2,7 +2,18 @@
 
 Snippet expansion for LaTeX and PreTeXt in VS Code.
 Snippets live in plain text `.snips` files you edit yourself, using regex triggers and inline JavaScript for dynamic expansion.
-This is the same general model as [HyperSnips](https://github.com/Oskar-Idland/hsnips), which was inspiration for this project.
+
+## Brief History
+The original [HyperSnips](https://github.com/draivin/hsnips) extension by `draivin` was created to incorporate `SirVer`'s [UltiSnips](https://github.com/SirVer/ultisnips) &mdash; a very popular snippet extension in Vim &mdash; into VSCode.
+After the original repository became stale, [OrangeX4](https://github.com/OrangeX4/hsnips) forked this repository and some improvements were made.
+This was then forked *again* by [Oskar-Idland](https://github.com/Oskar-Idland/hsnips), who fixed several tabstop errors.
+Oskar's repository has not seen modifications for some time, as of writing, and there are some errors and bugs regarding tabstops.
+
+Thus, **TeXPtxSnips** was born.
+It can be seen as both a reworking of Oskar's extension to fix some bugs in addition to offering support to snippets for [PreTeXt](https://pretextbook.org).
+
+As its name implies, **TeXPtxSnips** is only designed for LaTeX and PreTeXt languages.
+
 
 ## Quick start
 

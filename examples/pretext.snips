@@ -1,4 +1,3 @@
-# Demo snippet for smoke-testing PreTeXt support.
 
 snippet thm "theorem" b
 <theorem>

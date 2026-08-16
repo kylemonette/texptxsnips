@@ -1,13 +1,11 @@
 # TeXPtxSnips
 
-Snippet expansion for LaTeX and PreTeXt in VS Code.
-Snippets live in plain text `.snips` files you edit yourself, using regex triggers and inline JavaScript for dynamic expansion.
+Snippet engine for LaTeX and PreTeXt in VS Code.
 
 ## Brief History
 The original [HyperSnips](https://github.com/draivin/hsnips) extension by `draivin` was created to incorporate `SirVer`'s [UltiSnips](https://github.com/SirVer/ultisnips) &mdash; a very popular snippet extension in Vim &mdash; into VSCode.
 After the original repository became stale, [OrangeX4](https://github.com/OrangeX4/hsnips) forked this repository and some improvements were made.
-This was then forked *again* by [Oskar-Idland](https://github.com/Oskar-Idland/hsnips), who fixed several tabstop errors.
-Oskar's repository has not seen modifications for some time, as of writing, and there are some errors and bugs regarding tabstops.
+This was then forked *again* by [Oskar-Idland](https://github.com/Oskar-Idland/hsnips), who fixed several tabstop errors, but more have arisen as of recent.
 
 Thus, **TeXPtxSnips** was born.
 It can be seen as both a reworking of Oskar's extension to fix some bugs in addition to offering support to snippets for [PreTeXt](https://pretextbook.org).
@@ -103,7 +101,7 @@ The `\text{}`, `\mathrm{}`, and similar font/language-switching commands are als
 A snippet is expanded one of two ways, chosen automatically by how many distinct tabstops it has:
 
 - **Two or more** tabstops like `\frac{$1}{$2}` gets a real native tabstop session — Tab moves between fields exactly as in any other VS Code snippet.
-- **Zero or one** tabstops like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work (typing a subscript, then a superscript, without leaving the outer expression).
+- **Zero or one** tabstops like `\pi` or `mk`'s `\$$1\$` is inserted as a plain edit with the cursor placed directly, and is always safe to trigger again from inside another such snippet. That's what makes chaining several `A`-flagged shortcuts inside one `$...$` work.
 
 ## Manual expansion
 

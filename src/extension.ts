@@ -70,8 +70,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	// A snippet with 2+ distinct tabstops needs real Tab-to-jump navigation
-	// between its fields (e.g. table, tplot, the theorem-family
-	// environments), so it gets a genuine native session - protected
+	// between its fields, so it gets a genuine native session - protected
 	// against a later nested auto-expand the same way a Tab-gated one
 	// already is. A snippet with 0-1 tabstops has nothing to navigate
 	// between, so it's resolved as plain text with the cursor placed
@@ -85,15 +84,35 @@ export function activate(context: vscode.ExtensionContext) {
 		const resolved = resolveTemplate(text);
 		log(() => `expandMatch "${match.snippet.description}" resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount}`);
 
-		if (resolved.placeholderCount >= 2) {
+		// A raw editor.edit() + manual selection assignment is cheap, but a
+		// nested one landing inside an already-live native tabstop can desync
+		// VS Code's own tracking of that outer session (it stops seeing the
+		// edit as "still inside the placeholder"), breaking its later Tab
+		// navigation. insertSnippet is the API VS Code's snippet controller
+		// itself expects edits through, so a nested plain expansion is routed
+		// through it too, even though it has nothing to navigate to on its
+		// own - it only needs the native (>=2 tabstop) path's own tracking
+		// when it has tabstops of its own to hand off to.
+		const nestedInNativeSession = runs.isNativeSessionActive(document.uri);
+
+		if (resolved.placeholderCount >= 2 || nestedInNativeSession) {
 			// A single insertSnippet call over the trigger range replaces and
 			// expands atomically, so one undo reverts the whole expansion.
 			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
-			const nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
-				? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
-				: undefined;
-			runs.recordNativeExpansion(document.uri, nativeSessionEnd);
-			log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
+
+			if (resolved.placeholderCount >= 2) {
+				const nativeSessionEnd = resolved.firstPlaceholderOffset !== undefined
+					? advancePosition(match.range.start, resolved.text.slice(0, resolved.firstPlaceholderOffset))
+					: undefined;
+				runs.recordNativeExpansion(document.uri, nativeSessionEnd);
+				log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
+			} else {
+				const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
+				const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
+				const ownSuffix = resolved.firstPlaceholderOffset !== undefined ? resolved.text.slice(resolved.firstPlaceholderOffset) : undefined;
+				runs.recordPlainExpansion(document.uri, cursor, ownSuffix);
+				log(() => `  -> plain via insertSnippet (nested in native session); ${runs.debugSnapshot(document.uri)}`);
+			}
 			return;
 		}
 
@@ -141,12 +160,21 @@ export function activate(context: vscode.ExtensionContext) {
 			if (change === undefined || change.range.start.line !== change.range.end.line || change.text.includes('\n')) {return;}
 			const position = change.range.start.translate(0, change.text.length);
 
-			// A session started via Tab may still be live at this position.
-			if (runs.isNativeSessionActive(event.document.uri)) {return;}
-
 			const matches = getMatches(store.getSnippets(event.document.languageId), event.document, position, mathContext);
 			const auto = matches.find((m) => m.snippet.flags.auto);
 			if (!auto) {return;}
+
+			// A native session (2+ tabstops) may still be live at this
+			// position - nesting another native session inside it would
+			// corrupt VS Code's tabstop navigation, so that stays blocked.
+			// A plain expansion (0-1 tabstops) never starts a session of its
+			// own, so it's always safe to let through even here (e.g. typing
+			// "pi" while still on a vector snippet's first tabstop should
+			// still become \pi).
+			if (runs.isNativeSessionActive(event.document.uri)) {
+				const resolved = resolveTemplate(generateText(auto, event.document));
+				if (resolved.placeholderCount >= 2) {return;}
+			}
 
 			expanding = true;
 			try {
@@ -184,7 +212,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Nothing to expand - if we're sitting right where an auto-expand
 			// run left off, jump past its innermost pending trailing text
-			// (e.g. mk's closing $, or a chained fraction's own closing })
 			// instead of inserting a literal tab.
 			const exit = runs.tryExit(editor.document.uri, editor.selection.active);
 			if (exit !== undefined) {

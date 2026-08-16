@@ -147,10 +147,13 @@ export class RunTracker {
 	 * fraction's own closing }), when the cursor is sitting right where the
 	 * run left off - undefined otherwise. A native session having just
 	 * ended (the caller only invokes this once VS Code itself reports
-	 * !inSnippetMode) resumes a paused outer run first.
+	 * !inSnippetMode) resumes a paused outer run first. A still-active
+	 * native session refuses outright, rather than relying solely on the
+	 * caller having called endNativeSession() first.
 	 */
 	tryExit(uri: vscode.Uri, position: vscode.Position): vscode.Position | undefined {
 		const state = this.state(uri);
+		if (state.nativeSessionLines !== undefined) {return undefined;}
 		if (state.autoRunEnd === undefined) {
 			this.tryResume(state, position);
 		}

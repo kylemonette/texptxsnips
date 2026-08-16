@@ -2,7 +2,7 @@
   "name": "texptxsnips",
   "displayName": "TeXPtxSnips",
   "description": "Snippets for LaTeX and PreTeXt documents.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "kylemonette",
   "license": "MIT",
   "repository": {
@@ -35,16 +35,24 @@
     "languages": [
       {
         "id": "latex",
-        "extensions": [".tex"]
+        "extensions": [
+          ".tex"
+        ]
       },
       {
         "id": "pretext",
-        "extensions": [".ptx"]
+        "extensions": [
+          ".ptx"
+        ]
       },
       {
         "id": "snips",
-        "extensions": [".snips"],
-        "aliases": ["TeXPtxSnips"],
+        "extensions": [
+          ".snips"
+        ],
+        "aliases": [
+          "TeXPtxSnips"
+        ],
         "configuration": "./syntaxes/snips.language-configuration.json"
       }
     ],

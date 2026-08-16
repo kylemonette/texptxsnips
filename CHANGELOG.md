@@ -11,3 +11,4 @@ Initial release.
 - Safe chaining of multiple auto-expand snippets inside one another (e.g. several inline math shortcuts inside one `$...$`) without corrupting a native tabstop session
 - Multi-field snippets get full native Tab navigation between placeholders; single-field/no-field snippets stay lightweight and chainable
 - `texptxsnips.reloadSnippets` and `texptxsnips.openSnippetsDir` commands
+- Syntax highlighting for `.snips` files, including real JavaScript highlighting inside `` `` `` code blocks

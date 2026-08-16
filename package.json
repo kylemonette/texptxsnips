@@ -40,6 +40,19 @@
       {
         "id": "pretext",
         "extensions": [".ptx"]
+      },
+      {
+        "id": "snips",
+        "extensions": [".snips"],
+        "aliases": ["TeXPtxSnips"],
+        "configuration": "./syntaxes/snips.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "snips",
+        "scopeName": "source.snips",
+        "path": "./syntaxes/snips.tmLanguage.json"
       }
     ],
     "commands": [

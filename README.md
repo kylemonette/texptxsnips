@@ -88,6 +88,10 @@ A `priority N` line applies to the single snippet that follows it (default `0`, 
 
 A file's name (without `.snips`) is matched against the document's VS Code language ID: `latex.snips` applies to `.tex` files, `pretext.snips` to `.ptx` files. Snippets in `all.snips` are merged into every language.
 
+### Syntax highlighting
+
+`.snips` files get their own syntax highlighting out of the box — trigger patterns, flags, tabstops, and `` `` `` code blocks (with real JavaScript highlighting inside them) are all colored.
+
 ## Math-context detection
 
 Flagging a snippet `m` gates it on whether the cursor sits inside LaTeX math mode — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...). This is done with a real incremental tokenizer that treats `\\` (the line-break command) as one atomic token distinct from `\[`.

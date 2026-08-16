@@ -1,0 +1,94 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "TeXPtxSnips",
+	"scopeName": "source.snips",
+	"patterns": [
+		{ "include": "#comment" },
+		{ "include": "#priority" },
+		{ "include": "#global-block" },
+		{ "include": "#snippet-block" }
+	],
+	"repository": {
+		"comment": {
+			"match": "^\\s*(#.*)$",
+			"name": "comment.line.number-sign.snips"
+		},
+		"priority": {
+			"match": "^\\s*(priority)\\s+(-?\\d+)\\s*$",
+			"captures": {
+				"1": { "name": "keyword.control.priority.snips" },
+				"2": { "name": "constant.numeric.snips" }
+			}
+		},
+		"global-block": {
+			"begin": "^\\s*(global)\\s*$",
+			"beginCaptures": { "1": { "name": "keyword.control.snips" } },
+			"end": "^\\s*(endglobal)\\s*$",
+			"endCaptures": { "1": { "name": "keyword.control.snips" } },
+			"patterns": [{ "include": "source.js" }]
+		},
+		"snippet-block": {
+			"begin": "^(snippet)(?:\\s+(`)([^`]+)(`)|\\s+([^\\s\"]+))(?:\\s+(\")([^\"]*)(\"))?(?:\\s+([A-Za-z]+))?\\s*$",
+			"beginCaptures": {
+				"1": { "name": "keyword.control.snips" },
+				"2": { "name": "punctuation.definition.string.regexp.begin.snips" },
+				"3": { "name": "string.regexp.snips" },
+				"4": { "name": "punctuation.definition.string.regexp.end.snips" },
+				"5": { "name": "entity.name.function.snips" },
+				"6": { "name": "punctuation.definition.string.begin.snips" },
+				"7": { "name": "string.quoted.double.snips" },
+				"8": { "name": "punctuation.definition.string.end.snips" },
+				"9": { "name": "storage.modifier.snips" }
+			},
+			"end": "^\\s*(endsnippet)\\s*$",
+			"endCaptures": { "1": { "name": "keyword.control.snips" } },
+			"patterns": [
+				{ "include": "#codeblock" },
+				{ "include": "#tabstop" },
+				{ "include": "#escape" }
+			]
+		},
+		"codeblock": {
+			"begin": "``",
+			"beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.snips" } },
+			"end": "``",
+			"endCaptures": { "0": { "name": "punctuation.section.embedded.end.snips" } },
+			"name": "meta.embedded.block.javascript",
+			"patterns": [{ "include": "source.js" }]
+		},
+		"tabstop": {
+			"patterns": [
+				{
+					"match": "(\\$)(\\{)(\\d+)(:)([^{}]*)(\\})",
+					"captures": {
+						"1": { "name": "keyword.operator.tabstop.snips" },
+						"2": { "name": "punctuation.definition.tabstop.begin.snips" },
+						"3": { "name": "variable.other.tabstop.snips" },
+						"4": { "name": "punctuation.separator.tabstop.snips" },
+						"6": { "name": "punctuation.definition.tabstop.end.snips" }
+					}
+				},
+				{
+					"match": "(\\$)(\\{)(\\d+)(\\})",
+					"captures": {
+						"1": { "name": "keyword.operator.tabstop.snips" },
+						"2": { "name": "punctuation.definition.tabstop.begin.snips" },
+						"3": { "name": "variable.other.tabstop.snips" },
+						"4": { "name": "punctuation.definition.tabstop.end.snips" }
+					}
+				},
+				{
+					"match": "(\\$)(\\d+)",
+					"captures": {
+						"1": { "name": "keyword.operator.tabstop.snips" },
+						"2": { "name": "variable.other.tabstop.snips" }
+					}
+				}
+			]
+		},
+		"escape": {
+			"match": "\\\\[$}\\\\]",
+			"name": "constant.character.escape.snips"
+		}
+	}
+}

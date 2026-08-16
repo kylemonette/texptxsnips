@@ -31,5 +31,6 @@ steps:
       # Install the official packaging utility globally inside the cloud runner
       npm install -g @vscode/vsce
       
-      # Publish using the identity token injected by the AzureCLI task
-      vsce publish --no-token
+      # Publish using the managed identity session token injected by the AzureCLI task
+      vsce publish --azure-credential
+

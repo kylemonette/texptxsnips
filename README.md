@@ -85,7 +85,11 @@ A file's name (minus `.snips`) is matched against the document's language ID —
 
 ## Math mode
 
-The `m` flag gates a snippet on LaTeX math context — `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...) — including `\text{}` correctly switching back to prose mid-formula.
+The `m` flag gates a snippet on math context.
+
+In `.tex` files, that's `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...) — including `\text{}` correctly switching back to prose mid-formula.
+
+In `.ptx` files, that's the body of a math element — `<m>`, `<me>`, `<men>`, `<md>`, `<mdn>`, `<mrow>`.
 
 ## Multi-field snippets
 

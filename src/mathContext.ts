@@ -16,6 +16,9 @@ const MATH_ENVIRONMENTS = new Set([
 // language switch, so they stay in math context and are deliberately excluded.
 const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 'mbox', 'intertext']);
 
+// PreTeXt XML elements whose body is typeset in math mode.
+const MATH_TAGS = new Set(['m', 'me', 'men', 'md', 'mdn', 'mrow']);
+
 type Frame =
 	| { kind: 'root' }
 	| { kind: 'group'; mode: Mode }
@@ -43,16 +46,26 @@ function currentMode(stack: Frame[]): Mode {
 
 /**
  * Scans LaTeX source left to right, tokenizing control sequences as atomic
- * units before ever comparing substrings.
+ * units before ever comparing substrings. When `isXml` is set (PreTeXt
+ * documents), `<tag>...</tag>` elements are tokenized the same way `\begin`/
+ * `\end` are, so math elements like `<m>`/`<me>`/`<md>` switch into math mode.
  */
-function scanLine(text: string, stack: Frame[]): Frame[] {
+function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 	const out = stack.slice();
 	let i = 0;
 	while (i < text.length) {
 		const c = text[i];
 
-		if (c === '%') {
+		if (c === '%' && !isXml) {
 			break; // rest of the line is a comment
+		}
+
+		if (isXml && c === '<') {
+			const next = handleXmlTag(text, i, out);
+			if (next !== null) {
+				i = next;
+				continue;
+			}
 		}
 
 		if (c === '\\') {
@@ -116,6 +129,44 @@ function popIf(stack: Frame[], kind: Frame['kind']) {
 	if (stack[stack.length - 1]?.kind === kind) {stack.pop();}
 }
 
+/**
+ * Parses a `<tag ...>`, `</tag>`, or self-closing `<tag .../>` starting at
+ * index `i`, updating `stack` for math elements. Returns the index just past
+ * the tag, or null if `i` isn't the start of a well-formed tag on this line
+ * (e.g. attributes spanning multiple lines), in which case `<` is left as a
+ * plain character.
+ */
+function handleXmlTag(text: string, i: number, stack: Frame[]): number | null {
+	const closing = text[i + 1] === '/';
+	const start = i + (closing ? 2 : 1);
+	const nameMatch = /^[a-zA-Z][a-zA-Z0-9]*/.exec(text.slice(start));
+	if (!nameMatch) {return null;}
+	const name = nameMatch[0];
+
+	let j = start + name.length;
+	let quote: string | null = null;
+	while (j < text.length) {
+		const ch = text[j];
+		if (quote) {
+			if (ch === quote) {quote = null;}
+		} else if (ch === '"' || ch === '\'') {
+			quote = ch;
+		} else if (ch === '>') {
+			break;
+		}
+		j++;
+	}
+	if (j >= text.length) {return null;} // tag not closed on this line
+
+	const selfClosing = !closing && text[j - 1] === '/';
+	if (!closing && !selfClosing) {
+		stack.push({ kind: 'env', mode: MATH_TAGS.has(name) ? 'math' : currentMode(stack) });
+	} else if (closing) {
+		popIf(stack, 'env');
+	}
+	return j + 1;
+}
+
 function handleControlWord(name: string, text: string, stack: Frame[], advance: (n: number) => void) {
 	if (name === 'begin' || name === 'end') {
 		const rest = text.slice(text.indexOf(name) + name.length);
@@ -165,12 +216,13 @@ export class MathContextTracker {
 			this.caches.set(key, stacks);
 		}
 
+		const isXml = document.languageId === 'pretext';
 		for (let line = stacks.length - 1; line < position.line; line++) {
-			stacks.push(scanLine(document.lineAt(line).text, stacks[line]));
+			stacks.push(scanLine(document.lineAt(line).text, stacks[line], isXml));
 		}
 
 		const stackBefore = stacks[position.line];
-		const finalStack = scanLine(document.lineAt(position.line).text.slice(0, position.character), stackBefore);
+		const finalStack = scanLine(document.lineAt(position.line).text.slice(0, position.character), stackBefore, isXml);
 		return currentMode(finalStack) === 'math';
 	}
 }

@@ -2,8 +2,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { MathContextTracker } from '../mathContext';
 
-async function isMathAt(lines: string[], line: number, character: number): Promise<boolean> {
-	const doc = await vscode.workspace.openTextDocument({ content: lines.join('\n'), language: 'plaintext' });
+async function isMathAt(lines: string[], line: number, character: number, language = 'plaintext'): Promise<boolean> {
+	const doc = await vscode.workspace.openTextDocument({ content: lines.join('\n'), language });
 	return new MathContextTracker().isMath(doc, new vscode.Position(line, character));
 }
 
@@ -46,6 +46,31 @@ suite('MathContextTracker', function () {
 	test('nested $...$ inside \\text{} inside a math environment is still math', async () => {
 		const lines = ['\\begin{equation} a = \\text{test $abc$} \\end{equation}'];
 		assert.strictEqual(await isMathAt(lines, 0, 35), true);
+	});
+
+	test('inside <m>...</m> is math in a pretext document', async () => {
+		const result = await isMathAt(['<p>Consider <m>x + </m></p>'], 0, 19, 'pretext');
+		assert.strictEqual(result, true);
+	});
+
+	test('outside <m>...</m> is not math in a pretext document', async () => {
+		const result = await isMathAt(['<p>Consider <m>x</m> here</p>'], 0, 25, 'pretext');
+		assert.strictEqual(result, false);
+	});
+
+	test('<m>...</m> in a non-pretext document is not treated as math', async () => {
+		const result = await isMathAt(['<m>x + </m>'], 0, 7, 'plaintext');
+		assert.strictEqual(result, false);
+	});
+
+	test('nested <mrow> inside <md> is math', async () => {
+		const lines = ['<md>', '  <mrow>x = y + </mrow>', '</md>'];
+		assert.strictEqual(await isMathAt(lines, 1, 15, 'pretext'), true);
+	});
+
+	test('self-closing tag does not affect math state', async () => {
+		const result = await isMathAt(['<p>before <br/> <m>x + </m></p>'], 0, 22, 'pretext');
+		assert.strictEqual(result, true);
 	});
 
 	test('invalidate() picks up a real edit that removes an opening $', async () => {

@@ -45,7 +45,9 @@ The body uses standard VS Code snippet syntax: `$1`, `${1}`, `${1:default text}`
 | `m` | Only match inside math mode. |
 | `h` | Hide from the completion list; still expands via `A` or Tab. |
 
-`i`, `w`, `b` only apply to bare-word triggers — a regex trigger's pattern is the whole boundary condition.
+`i`, `w` only apply to bare-word triggers — a regex trigger's pattern is the whole word-boundary condition.
+`b` applies to both: even for a regex trigger, it independently requires nothing but whitespace before the match.
+So, a regex trigger cannot use `^` to get the beginning of the line.
 
 ### Code blocks
 

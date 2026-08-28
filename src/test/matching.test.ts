@@ -47,6 +47,12 @@ suite('getMatches', function () {
 		assert.strictEqual((await matchesFor('x thm', [snip])).length, 0, 'non-whitespace before it should block');
 	});
 
+	test('the b flag also constrains a regex trigger, unlike i/w', async () => {
+		const snip = snippet({ trigger: /pp$/, flags: { ...noFlags, beginningOfLine: true } });
+		assert.strictEqual((await matchesFor('  pp', [snip])).length, 1, 'leading whitespace before a regex match is fine');
+		assert.strictEqual((await matchesFor('x pp', [snip])).length, 0, 'non-whitespace before a regex match should block, same as a string trigger');
+	});
+
 	test('mathOnly gates on the math context tracker', async () => {
 		const snip = snippet({ trigger: 'pi', flags: { ...noFlags, inWord: true, mathOnly: true } });
 		assert.strictEqual((await matchesFor('this pi', [snip])).length, 0, 'not in math mode');

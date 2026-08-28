@@ -2,6 +2,7 @@
 .vscode-test/**
 src/**
 out/test/**
+test/**
 examples/**
 .gitignore
 .yarnrc
@@ -11,3 +12,4 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+**/.mocharc-unit.cjs

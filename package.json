@@ -98,7 +98,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pkill -f 'agent-host/sdk-cache/claude' || true; npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "pretest:unit": "npm run compile",
+    "test:unit": "mocha --config .mocharc-unit.cjs"
   },
   "devDependencies": {
     "@types/vscode": "^1.125.0",
@@ -108,7 +110,8 @@
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
     "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
+    "@vscode/test-electron": "^3.0.0",
+    "mocha": "^11.8.0"
   },
   "overrides": {
     "diff": "^8.0.4",

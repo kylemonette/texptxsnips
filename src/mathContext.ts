@@ -14,7 +14,7 @@ const MATH_ENVIRONMENTS = new Set([
 // Commands whose brace argument switches back to prose/text mode.
 // \mathrm, \mathbf, \operatorname etc. are math-symbol formatting, not a
 // language switch, so they stay in math context and are deliberately excluded.
-const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 'mbox', 'intertext']);
+const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 'mbox', 'intertext', 'label', 'cite', 'ref', 'eqref']);
 
 // PreTeXt XML elements whose body is typeset in math mode.
 const MATH_TAGS = new Set(['m', 'me', 'men', 'md', 'mdn', 'mrow']);

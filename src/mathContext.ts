@@ -83,14 +83,16 @@ function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 				continue;
 			}
 			// control symbol: backslash + exactly one non-letter char
-			if (next === '(') {
-				out.push({ kind: 'paren' });
-			} else if (next === ')') {
-				popIf(out, 'paren');
-			} else if (next === '[') {
-				out.push({ kind: 'bracket' });
-			} else if (next === ']') {
-				popIf(out, 'bracket');
+			if (!isXml) {
+				if (next === '(') {
+					out.push({ kind: 'paren' });
+				} else if (next === ')') {
+					popIf(out, 'paren');
+				} else if (next === '[') {
+					out.push({ kind: 'bracket' });
+				} else if (next === ']') {
+					popIf(out, 'bracket');
+				}
 			}
 			i += 2;
 			continue;
@@ -107,7 +109,7 @@ function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 			continue;
 		}
 
-		if (c === '$') {
+		if (c === '$' && !isXml) {
 			if (text[i + 1] === '$') {
 				if (out[out.length - 1]?.kind === 'dollardollar') {out.pop();}
 				else {out.push({ kind: 'dollardollar' });}

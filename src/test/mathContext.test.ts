@@ -73,6 +73,16 @@ suite('MathContextTracker', function () {
 		assert.strictEqual(result, true);
 	});
 
+	test('$ does not trigger math in a pretext document', async () => {
+		const result = await isMathAt(['<p>Price is $5 and $$10$$ or \\(x\\) or \\[y\\]</p>'], 0, 40, 'pretext');
+		assert.strictEqual(result, false);
+	});
+
+	test('$ inside <m>...</m> stays math in a pretext document', async () => {
+		const result = await isMathAt(['<p><m>x = $5</m></p>'], 0, 11, 'pretext');
+		assert.strictEqual(result, true);
+	});
+
 	test('invalidate() picks up a real edit that removes an opening $', async () => {
 		const doc = await vscode.workspace.openTextDocument({ content: 'before $x\nstill math\nend$ after', language: 'plaintext' });
 		const editor = await vscode.window.showTextDocument(doc);

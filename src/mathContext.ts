@@ -2,13 +2,13 @@ import * as vscode from 'vscode';
 
 type Mode = 'text' | 'math';
 
-// Environments whose body is typeset in math mode.
+// Environments that switch into math mode on their own, without needing an
+// enclosing math context.
+// `tikzcd` is the exception that still needs to be listed.
 const MATH_ENVIRONMENTS = new Set([
 	'equation', 'equation*', 'align', 'align*', 'gather', 'gather*',
 	'multline', 'multline*', 'eqnarray', 'eqnarray*', 'flalign', 'flalign*',
-	'alignat', 'alignat*', 'math', 'displaymath', 'array',
-	'cases', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix',
-	'split', 'gathered', 'aligned', 'alignedat', 'subarray', 'tikzcd',
+	'alignat', 'alignat*', 'math', 'displaymath', 'tikzcd',
 ]);
 
 // Commands whose brace argument switches back to prose/text mode.

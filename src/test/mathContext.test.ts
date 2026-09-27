@@ -83,6 +83,48 @@ suite('MathContextTracker', function () {
 		assert.strictEqual(result, true);
 	});
 
+	test('bmatrix nested inside $...$ is math', async () => {
+		const result = await isMathAt(['$\\begin{bmatrix} 1 & '], 0, 21);
+		assert.strictEqual(result, true);
+	});
+
+	test('cases nested inside equation is math', async () => {
+		const lines = ['\\begin{equation}', 'f(x) = \\begin{cases} 1 & '];
+		assert.strictEqual(await isMathAt(lines, 1, 25), true);
+	});
+
+	test('array nested inside \\[...\\] is math', async () => {
+		const lines = ['\\[ \\begin{array}{cc} 1 & '];
+		assert.strictEqual(await isMathAt(lines, 0, 25), true);
+	});
+
+	test('subarray nested inside a math environment is math', async () => {
+		const lines = ['\\begin{equation}', '\\sum_{\\begin{subarray}{l} i \\in ', '\\end{subarray}} x_i'];
+		assert.strictEqual(await isMathAt(lines, 1, 33), true);
+	});
+
+	test('smallmatrix nested inside $...$ is math', async () => {
+		const result = await isMathAt(['$\\begin{smallmatrix} 1 & '], 0, 25);
+		assert.strictEqual(result, true);
+	});
+
+	test('split, gathered, aligned, alignedat all inherit math from an enclosing environment', async () => {
+		for (const env of ['split', 'gathered', 'aligned', 'alignedat']) {
+			const lines = ['\\begin{equation}', `\\begin{${env}} x = `];
+			assert.strictEqual(await isMathAt(lines, 1, env.length + 10), true, `${env} should be math`);
+		}
+	});
+
+	test('tikzcd starts math mode on its own, without being nested in math', async () => {
+		const lines = ['\\begin{tikzcd}', 'A \\arrow[r] & '];
+		assert.strictEqual(await isMathAt(lines, 1, 13), true);
+	});
+
+	test('tikzcd nested inside \\[...\\] is still math', async () => {
+		const lines = ['\\[', '\\begin{tikzcd}', 'A \\arrow[r] & '];
+		assert.strictEqual(await isMathAt(lines, 2, 13), true);
+	});
+
 	test('invalidate() picks up a real edit that removes an opening $', async () => {
 		const doc = await vscode.workspace.openTextDocument({ content: 'before $x\nstill math\nend$ after', language: 'plaintext' });
 		const editor = await vscode.window.showTextDocument(doc);

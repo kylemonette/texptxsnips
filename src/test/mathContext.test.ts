@@ -125,6 +125,29 @@ suite('MathContextTracker', function () {
 		assert.strictEqual(await isMathAt(lines, 2, 13), true);
 	});
 
+	test('a later \\cite{} switches back to text even when an earlier word on the line has \\cite as a prefix', async () => {
+		// \citep contains "cite" as a substring - a naive whole-line search for
+		// "cite" would land on the \citep occurrence instead of the real \cite
+		// that follows, and wrongly conclude it isn't followed by "{".
+		const result = await isMathAt(['$\\citep{a} \\cite{'], 0, 17);
+		assert.strictEqual(result, false);
+	});
+
+	test('two \\begin with different-length environment names on the same line both resolve correctly', async () => {
+		// A naive whole-line search for "begin" would find the first \begin
+		// again when processing the second, misreading its environment name
+		// and desyncing the scan position by the name-length difference
+		// ("align" vs "bmatrix") - which would leave the trailing "\end{align}"
+		// unmatched and the line stuck in math mode.
+		const lines = ['\\begin{align}\\begin{bmatrix}1\\end{bmatrix}\\end{align} x + '];
+		assert.strictEqual(await isMathAt(lines, 0, lines[0].length), false, 'should be back in text mode after both environments close');
+	});
+
+	test('two \\end with different-length environment names on the same line both pop correctly', async () => {
+		const lines = ['\\begin{equation}\\begin{bmatrix}1\\end{bmatrix}\\end{equation} x'];
+		assert.strictEqual(await isMathAt(lines, 0, lines[0].length), false, 'should have returned to text mode after \\end{equation}');
+	});
+
 	test('invalidate() picks up a real edit that removes an opening $', async () => {
 		const doc = await vscode.workspace.openTextDocument({ content: 'before $x\nstill math\nend$ after', language: 'plaintext' });
 		const editor = await vscode.window.showTextDocument(doc);

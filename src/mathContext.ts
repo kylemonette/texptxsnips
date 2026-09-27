@@ -79,7 +79,7 @@ function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 				while (j < text.length && /[a-zA-Z]/.test(text[j])) {j++;}
 				const name = text.slice(i + 1, j);
 				i = j;
-				handleControlWord(name, text, out, (skip) => { i += skip; });
+				handleControlWord(name, text, j, out, (skip) => { i += skip; });
 				continue;
 			}
 			// control symbol: backslash + exactly one non-letter char
@@ -169,9 +169,17 @@ function handleXmlTag(text: string, i: number, stack: Frame[]): number | null {
 	return j + 1;
 }
 
-function handleControlWord(name: string, text: string, stack: Frame[], advance: (n: number) => void) {
+/**
+ * `pos` is the index in `text` just past the control word's name (i.e. right
+ * after "begin"/"end"/etc.) - passed in directly rather than re-derived with
+ * `text.indexOf(name)`, which would find the leftmost occurrence of the name
+ * anywhere on the line instead of this one (wrong on a line with two `\begin`
+ * of different-length environment names, or e.g. a `\cite` after an earlier
+ * `\citep`, whose name contains "cite" as a prefix).
+ */
+function handleControlWord(name: string, text: string, pos: number, stack: Frame[], advance: (n: number) => void) {
 	if (name === 'begin' || name === 'end') {
-		const rest = text.slice(text.indexOf(name) + name.length);
+		const rest = text.slice(pos);
 		const match = /^\{([^}]*)\}/.exec(rest);
 		if (match) {
 			advance(match[0].length);
@@ -184,7 +192,7 @@ function handleControlWord(name: string, text: string, stack: Frame[], advance: 
 		}
 		return;
 	}
-	if (TEXT_SWITCH_COMMANDS.has(name) && text[text.indexOf(name) + name.length] === '{') {
+	if (TEXT_SWITCH_COMMANDS.has(name) && text[pos] === '{') {
 		advance(1); // consume the opening brace here so it inherits text mode
 		stack.push({ kind: 'group', mode: 'text' });
 	}

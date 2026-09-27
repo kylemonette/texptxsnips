@@ -59,14 +59,15 @@ export class SnippetStore {
 		return errors;
 	}
 
+	/**
+	 * Watches for file changes and invokes `onReload` on each one - which is
+	 * expected to itself call `load()` (as `extension.ts`'s reload callback
+	 * does), not just react to a load this method already performed.
+	 */
 	watch(onReload: () => void): vscode.Disposable {
 		const pattern = new vscode.RelativePattern(vscode.Uri.file(this.dir), '*.snips');
 		const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-		const reload = async () => {
-			await this.load();
-			onReload();
-		};
-		const disposables = [watcher.onDidChange(reload), watcher.onDidCreate(reload), watcher.onDidDelete(reload)];
+		const disposables = [watcher.onDidChange(onReload), watcher.onDidCreate(onReload), watcher.onDidDelete(onReload)];
 		return vscode.Disposable.from(watcher, ...disposables);
 	}
 }

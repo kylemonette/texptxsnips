@@ -21,8 +21,3 @@ export function getSnippetsDir(): string {
 	}
 	return defaultSnippetsDir();
 }
-
-/** Escapes vscode.SnippetString metacharacters (\, $, }) in dynamically generated text. */
-export function escapeSnippetSyntax(value: string): string {
-	return value.replace(/[\\$}]/g, (c) => `\\${c}`);
-}

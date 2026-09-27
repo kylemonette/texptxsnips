@@ -15,7 +15,7 @@ function workspacePath(document: vscode.TextDocument): string {
 }
 
 function generateText(match: SnippetMatch, document: vscode.TextDocument): string {
-	return match.snippet.generate(match.groups, [], workspacePath(document), document.uri.fsPath);
+	return match.snippet.generate(match.groups, workspacePath(document), document.uri.fsPath);
 }
 
 export function activate(context: vscode.ExtensionContext) {

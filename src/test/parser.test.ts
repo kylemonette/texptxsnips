@@ -27,7 +27,7 @@ suite('parseSnippetFile', () => {
 		const text = 'global\nfunction shout(s) { return s.toUpperCase(); }\nendglobal\n\nsnippet x "x" A\n``rv = shout(\'hi\')``\nendsnippet';
 		const { snippets, errors } = parseSnippetFile(text, 'test.snips');
 		assert.deepStrictEqual(errors, []);
-		assert.strictEqual(snippets[0].generate(null, [], '', ''), 'HI');
+		assert.strictEqual(snippets[0].generate(null, '', ''), 'HI');
 	});
 
 	test('priority applies only to the single snippet that follows it', () => {
@@ -40,14 +40,14 @@ suite('parseSnippetFile', () => {
 	test('rv is spliced into the body unescaped, so a code block can build real tabstop syntax', () => {
 		const text = 'snippet x "x" A\n``rv = "\\\\frac{a}{$1}$0"``\nendsnippet';
 		const { snippets } = parseSnippetFile(text, 'test.snips');
-		assert.strictEqual(snippets[0].generate(null, [], '', ''), '\\frac{a}{$1}$0');
+		assert.strictEqual(snippets[0].generate(null, '', ''), '\\frac{a}{$1}$0');
 	});
 
 	test('capture groups from a regex trigger are available in code blocks as m[n]', () => {
 		const text = 'snippet `([a-z])(\\d)` "x" A\n``rv = m[1] + "_" + m[2]``\nendsnippet';
 		const { snippets } = parseSnippetFile(text, 'test.snips');
 		const m = (snippets[0].trigger as RegExp).exec('x2');
-		assert.strictEqual(snippets[0].generate(m, [], '', ''), 'x_2');
+		assert.strictEqual(snippets[0].generate(m, '', ''), 'x_2');
 	});
 
 	test('a malformed header reports an error but does not prevent the rest of the file from parsing', () => {

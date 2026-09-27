@@ -7,13 +7,13 @@ export interface SnippetFlags {
 	wordBoundary: boolean;
 	/** b - trigger only matches when preceded solely by whitespace on the line */
 	beginningOfLine: boolean;
-	/** m - trigger only matches inside LaTeX math context */
+	/** m - trigger only matches inside math context */
 	mathOnly: boolean;
 	/** h - excluded from the completion list; requires `auto` */
 	hidden: boolean;
 }
 
-export type SnippetGenerator = (m: RegExpExecArray | null, t: string[], w: string, path: string) => string;
+export type SnippetGenerator = (m: RegExpExecArray | null, w: string, path: string) => string;
 
 export interface Snippet {
 	trigger: string | RegExp;

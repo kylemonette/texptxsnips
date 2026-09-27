@@ -59,7 +59,7 @@ snippet `([a-zA-Z])(\d)` "auto subscript" wAm
 endsnippet
 ```
 
-Available inside: `m` (regex capture groups), `t` (tabstop contents), `w` (workspace path), `path` (current file path). `rv` is spliced in as-is, so it can contain real snippet syntax (`rv = '\\frac{' + m[1] + '}{$1}$0'`) — escape any `$` you don't want treated as a tabstop.
+Available inside: `m` (regex capture groups), `w` (workspace path), `path` (current file path). `rv` is spliced in as-is, so it can contain real snippet syntax (`rv = '\\frac{' + m[1] + '}{$1}$0'`) — escape any `$` you don't want treated as a tabstop.
 
 ### `global` blocks and `priority`
 

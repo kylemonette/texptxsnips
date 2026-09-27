@@ -40,7 +40,7 @@ function parseHeader(line: string): Header | null {
 /** Splits a body on ``code`` blocks and compiles it to a JS source snippet returning the expanded string. */
 function compileBodySource(body: string): string {
 	const CODE_RE = /``([\s\S]*?)``/g;
-	let out = 'function(m,t,w,path){\nlet out="";\nlet rv;\n';
+	let out = 'function(m,w,path){\nlet out="";\nlet rv;\n';
 	let lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = CODE_RE.exec(body))) {

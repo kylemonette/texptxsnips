@@ -10,7 +10,7 @@ Forked from [HyperSnips V2](https://github.com/Oskar-Idland/hsnips) (itself desc
 
 ## Quick start
 
-Run **TeXPtxSnips: Open Snippets Directory** from the Command Palette, then add a file named after the language you want — `latex.snips`, `pretext.snips` — or `all.snips` for snippets shared across both. A minimal example:
+Run **TeXPtxSnips: Open Snippets Directory** from the Command Palette, then add a file named after the language you want: `latex.snips`, `pretext.snips`, or `all.snips` for snippets shared across both. A minimal example:
 
 ```
 snippet mk "inline math" A
@@ -77,10 +77,6 @@ endsnippet
 
 A `global` block runs once on load; its functions and constants are visible to every code block in the file. `priority N` applies to the single snippet that follows it (default `0`, higher wins on a tie).
 
-### File naming and merging
-
-A file's name (minus `.snips`) is matched against the document's language ID — `latex.snips` for `.tex`, `pretext.snips` for `.ptx`. `all.snips` applies everywhere.
-
 ### Syntax highlighting
 
 `.snips` files get their own highlighting out of the box — triggers, flags, tabstops, and code blocks (with real JavaScript inside).
@@ -89,7 +85,7 @@ A file's name (minus `.snips`) is matched against the document's language ID —
 
 The `m` flag gates a snippet on math context.
 
-In `.tex` files, that's `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, `cases`, `pmatrix`, ...) — including `\text{}` correctly switching back to prose mid-formula.
+In `.tex` files, that's `$...$`, `$$...$$`, `\(...\)`, `\[...\]`, or a math environment (`equation`, `align`, etc.).
 
 In `.ptx` files, that's the body of a math element — `<m>`, `<me>`, `<men>`, `<md>`, `<mdn>`, `<mrow>`.
 

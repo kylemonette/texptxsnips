@@ -2,6 +2,8 @@ import { ParsedSnippetFile, Snippet, SnippetFlags, SnippetGenerator } from './ty
 
 const HEADER_RE = /^snippet(?:\s+`([^`]+)`|\s+(\S+))(?:\s+"([^"]*)")?(?:\s+([A-Za-z]+))?\s*$/;
 const PRIORITY_RE = /^priority\s+(-?\d+)\s*$/;
+const SNIPPET_LINE_RE = /^snippet(\s|$)/;
+const KNOWN_FLAGS = 'Aiwbmh';
 
 function parseFlags(chars: string): SnippetFlags {
 	return {
@@ -18,6 +20,8 @@ interface Header {
 	trigger: string | RegExp;
 	description: string;
 	flags: SnippetFlags;
+	/** flag characters that aren't one of KNOWN_FLAGS, reported as a warning */
+	unknownFlags: string;
 }
 
 function parseHeader(line: string): Header | null {
@@ -25,16 +29,20 @@ function parseHeader(line: string): Header | null {
 	if (!m) {return null;}
 	const [, regexSrc, literal, description, flagChars] = m;
 	const flags = parseFlags(flagChars ?? '');
+	const unknownFlags = [...(flagChars ?? '')].filter((c) => !KNOWN_FLAGS.includes(c)).join('');
 
 	let trigger: string | RegExp;
 	if (regexSrc !== undefined) {
-		// anchor to the end of the scanned text, so a match
-		// always ends exactly at the cursor
-		trigger = new RegExp(regexSrc.endsWith('$') ? regexSrc : regexSrc + '$');
+		// Anchor to the end of the scanned text, so a match always ends
+		// exactly at the cursor. Wrapped in a group so the anchor applies to
+		// the whole pattern - a bare `$` suffix would only bind to the last
+		// alternative of `a|b`, and checking for an existing trailing `$`
+		// would mistake an escaped literal `\$` for an anchor.
+		trigger = new RegExp(`(?:${regexSrc})$`);
 	} else {
 		trigger = literal!;
 	}
-	return { trigger, description: description ?? '', flags };
+	return { trigger, description: description ?? '', flags, unknownFlags };
 }
 
 /** Splits a body on ``code`` blocks and compiles it to a JS source snippet returning the expanded string. */
@@ -48,8 +56,9 @@ function compileBodySource(body: string): string {
 		out += `rv=undefined;\n${match[1]}\n`;
 		// rv is spliced in raw, not escaped: a code block is allowed to
 		// build literal $1/}/\\ snippet syntax (e.g. programmatically
-		// inserting a real tabstop into its own output).
-		out += 'out+=String(rv);\n';
+		// inserting a real tabstop into its own output). A block that never
+		// assigns rv contributes nothing, rather than the text "undefined".
+		out += 'out+=(rv===undefined||rv===null)?"":String(rv);\n';
 		lastIndex = CODE_RE.lastIndex;
 	}
 	out += `out+=${JSON.stringify(body.slice(lastIndex))};\n`;
@@ -93,6 +102,9 @@ export function parseSnippetFile(text: string, source: string): ParsedSnippetFil
 		if (trimmed === 'global') {
 			const start = ++i;
 			while (i < lines.length && lines[i].trim() !== 'endglobal') {i++;}
+			if (i >= lines.length) {
+				errors.push(`${source}: missing endglobal for the global block at line ${start}`);
+			}
 			globalCode += lines.slice(start, i).join('\n') + '\n';
 			i++;
 			continue;
@@ -105,7 +117,7 @@ export function parseSnippetFile(text: string, source: string): ParsedSnippetFil
 			continue;
 		}
 
-		if (trimmed.startsWith('snippet')) {
+		if (SNIPPET_LINE_RE.test(trimmed)) {
 			const header = parseHeader(lines[i]);
 			i++;
 			if (!header) {
@@ -115,8 +127,14 @@ export function parseSnippetFile(text: string, source: string): ParsedSnippetFil
 				pendingPriority = 0;
 				continue;
 			}
+			if (header.unknownFlags) {
+				errors.push(`${source}: unknown flag(s) "${header.unknownFlags}" ignored in: ${lines[i - 1]}`);
+			}
 			const bodyStart = i;
 			while (i < lines.length && lines[i].trim() !== 'endsnippet') {i++;}
+			if (i >= lines.length) {
+				errors.push(`${source}: missing endsnippet for the snippet at line ${bodyStart}: ${lines[bodyStart - 1]}`);
+			}
 			bodies.push(lines.slice(bodyStart, i).join('\n'));
 			i++;
 			headers.push(header);

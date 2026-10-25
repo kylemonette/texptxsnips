@@ -11,16 +11,58 @@ suite('parseSnippetFile', () => {
 		assert.deepStrictEqual(snippets[0].flags, { auto: true, inWord: false, wordBoundary: false, beginningOfLine: false, mathOnly: false, hidden: false });
 	});
 
-	test('a regex trigger gets anchored to the end if it isn\'t already', () => {
+	test('a regex trigger is anchored to the end of the text', () => {
 		const { snippets } = parseSnippetFile('snippet `foo` "x" A\nbar\nendsnippet', 'test.snips');
 		const trigger = snippets[0].trigger as RegExp;
 		assert.ok(trigger instanceof RegExp);
-		assert.strictEqual(trigger.source, 'foo$');
+		assert.ok(trigger.test('xfoo'));
+		assert.ok(!trigger.test('foox'));
 	});
 
-	test('a regex trigger that already ends in $ is not double-anchored', () => {
+	test('a regex trigger that already ends in $ still matches at the end', () => {
 		const { snippets } = parseSnippetFile('snippet `foo$` "x" A\nbar\nendsnippet', 'test.snips');
-		assert.strictEqual((snippets[0].trigger as RegExp).source, 'foo$');
+		assert.ok((snippets[0].trigger as RegExp).test('xfoo'));
+	});
+
+	test('the end anchor applies to every alternative of a regex trigger', () => {
+		const { snippets } = parseSnippetFile('snippet `ab|cd` "x" A\nbar\nendsnippet', 'test.snips');
+		const trigger = snippets[0].trigger as RegExp;
+		assert.ok(!trigger.test('ab and more'), 'ab earlier on the line should not match');
+		assert.ok(trigger.test('xab'));
+		assert.ok(trigger.test('xcd'));
+	});
+
+	test('a regex trigger ending in an escaped \\$ is still anchored', () => {
+		const { snippets } = parseSnippetFile('snippet `foo\\$` "x" A\nbar\nendsnippet', 'test.snips');
+		const trigger = snippets[0].trigger as RegExp;
+		assert.ok(!trigger.test('foo$ bar'), 'foo$ earlier on the line should not match');
+		assert.ok(trigger.test('x foo$'));
+	});
+
+	test('a code block that never assigns rv contributes nothing', () => {
+		const { snippets } = parseSnippetFile('snippet x "x" A\na``let q = 1;``b\nendsnippet', 'test.snips');
+		assert.strictEqual(snippets[0].generate(null, '', ''), 'ab');
+	});
+
+	test('unknown flags are reported but the snippet still loads', () => {
+		const { snippets, errors } = parseSnippetFile('snippet x "x" At\ny\nendsnippet', 'test.snips');
+		assert.strictEqual(snippets.length, 1);
+		assert.strictEqual(snippets[0].flags.auto, true);
+		assert.strictEqual(errors.length, 1);
+		assert.ok(errors[0].includes('"t"'));
+	});
+
+	test('a missing endsnippet or endglobal is reported', () => {
+		assert.strictEqual(parseSnippetFile('snippet x "x" A\ny', 'test.snips').errors.length, 1);
+		assert.strictEqual(parseSnippetFile('global\nconst a = 1;', 'test.snips').errors.length, 1);
+	});
+
+	test('a line that merely starts with the word "snippet" is not a header', () => {
+		const text = 'snippets are great\n\nsnippet ok "ok" A\ny\nendsnippet';
+		const { snippets, errors } = parseSnippetFile(text, 'test.snips');
+		assert.strictEqual(snippets.length, 1, 'the following real snippet must not be swallowed');
+		assert.strictEqual(errors.length, 1);
+		assert.ok(errors[0].includes('unexpected line'));
 	});
 
 	test('global block helpers are visible to every snippet generator in the file', () => {

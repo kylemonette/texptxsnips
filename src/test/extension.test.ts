@@ -85,6 +85,18 @@ suite('Extension end-to-end', () => {
 				'\\end{theorem}',
 				'$0',
 				'endsnippet',
+				'',
+				'snippet dm "display math" A',
+				'\\[',
+				'\t$1',
+				'\\]$0',
+				'endsnippet',
+				'',
+				'snippet beg "begin" A',
+				'\\begin{$1}',
+				'$0',
+				'\\end{$1}',
+				'endsnippet',
 			].join('\n')
 		);
 
@@ -151,6 +163,36 @@ suite('Extension end-to-end', () => {
 		await editor.edit((eb) => eb.delete(new vscode.Range(0, 2, 0, 3)));
 		await waitForQuiescence(doc);
 		assert.strictEqual(doc.getText(), 'mk', 'backspacing to just after a trigger should not expand it');
+	});
+
+	test('a plain (single-tabstop) multi-line snippet is indented to the trigger line, like a native one', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '    ', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		editor.options = { insertSpaces: true, indentSize: 4, tabSize: 4 };
+		editor.selection = new vscode.Selection(0, 4, 0, 4);
+		await typeInto(editor, doc, 'dm');
+		await waitFor(() => doc.getText().includes('\\]'));
+		// later lines get the trigger line's 4 spaces, and the body's own tab becomes 4 spaces
+		assert.strictEqual(doc.getText(), '    \\[\n        \n    \\]');
+		assert.ok(editor.selection.active.isEqual(new vscode.Position(1, 8)), `cursor should be on the $1 line, got ${editor.selection.active.line}:${editor.selection.active.character}`);
+	});
+
+	test('a tabstop repeated as a mirror gets a native session, so both copies fill in', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		await typeInto(editor, doc, 'beg');
+		await waitFor(() => doc.getText().startsWith('\\begin{}'));
+		// Real typing, not editor.edit(): an API edit at an empty tabstop
+		// lands outside the snippet session's placeholder, so the session
+		// never mirrors it.
+		for (const ch of 'xy') {
+			await vscode.commands.executeCommand('type', { text: ch });
+			await waitForQuiescence(doc);
+		}
+		await waitFor(() => doc.getText() === '\\begin{xy}\n\n\\end{xy}');
+		assert.strictEqual(doc.getText(), '\\begin{xy}\n\n\\end{xy}');
 	});
 
 	test('a non-auto snippet does not expand on typing but does on Tab', async function () {

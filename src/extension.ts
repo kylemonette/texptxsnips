@@ -4,7 +4,7 @@ import { SnippetStore } from './snippetStore';
 import { MathContextTracker } from './mathContext';
 import { getMatches, SnippetMatch } from './matching';
 import { getSnippetsDir } from './utils';
-import { advancePosition, resolveTemplate } from './snippetTemplate';
+import { advancePosition, indentTemplate, IndentOptions, resolveTemplate } from './snippetTemplate';
 import { RunTracker } from './runTracker';
 
 const LANGUAGES = ['latex', 'pretext'];
@@ -16,6 +16,17 @@ function workspacePath(document: vscode.TextDocument): string {
 
 function generateText(match: SnippetMatch, document: vscode.TextDocument): string {
 	return match.snippet.generate(match.groups, workspacePath(document), document.uri.fsPath);
+}
+
+function indentOptions(editor: vscode.TextEditor): IndentOptions {
+	const { insertSpaces, indentSize, tabSize } = editor.options;
+	const size = typeof indentSize === 'number' ? indentSize : typeof tabSize === 'number' ? tabSize : 4;
+	return { insertSpaces: insertSpaces !== false, indentSize: size };
+}
+
+/** The whitespace a line starts with, up to `position` - what insertSnippet indents a body's later lines by. */
+function leadingWhitespace(document: vscode.TextDocument, position: vscode.Position): string {
+	return /^[ \t]*/.exec(document.lineAt(position.line).text.slice(0, position.character))![0];
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -72,21 +83,27 @@ export function activate(context: vscode.ExtensionContext) {
 	// A snippet with 2+ distinct tabstops needs real Tab-to-jump navigation
 	// between its fields, so it gets a genuine native session - protected
 	// against a later nested auto-expand the same way a Tab-gated one
-	// already is. A snippet with 0-1 tabstops has nothing to navigate
-	// between, so it's resolved as plain text with the cursor placed
-	// manually instead: this never starts a native session, so chaining
-	// several of these in a row (e.g. multiple inline math shortcuts in
-	// one $ $) is always safe regardless of what triggered it. See
-	// RunTracker for how an outer run's own pending exit survives a nested
-	// native session like this.
+	// already is. So does one using syntax only a native session renders
+	// (a mirrored tabstop, a choice, a variable, a transform). Any other
+	// snippet has at most one tabstop and nothing to navigate between, so
+	// it's resolved as plain text with the cursor placed manually instead:
+	// this never starts a native session, so chaining several of these in
+	// a row (e.g. multiple inline math shortcuts in one $ $) is always safe
+	// regardless of what triggered it. See RunTracker for how an outer
+	// run's own pending exit survives a nested native session like this.
 	async function expandMatch(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
 		const text = generateText(match, document);
-		const resolved = resolveTemplate(text);
-		log(() => `expandMatch "${match.snippet.description}" resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount}`);
+		// Indented the way insertSnippet would, so a plain expansion's later
+		// lines line up with the trigger line just like a native one's.
+		// Only whitespace at line starts changes, so the native check and
+		// line count below are unaffected.
+		const resolved = resolveTemplate(indentTemplate(text, leadingWhitespace(document, match.range.start), indentOptions(editor)));
+		log(() => `expandMatch "${match.snippet.description}" resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount} native=${resolved.needsNativeSession}`);
 
-		if (resolved.placeholderCount >= 2) {
+		if (resolved.needsNativeSession) {
 			// A single insertSnippet call over the trigger range replaces and
-			// expands atomically, so one undo reverts the whole expansion.
+			// expands atomically, so one undo reverts the whole expansion. It
+			// gets the raw text, since it does its own indenting.
 			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
 			const bodyLines = resolved.text.split('\n').length - 1;
 			runs.recordNativeExpansion(document.uri, match.range, match.range.start.line + bodyLines);
@@ -148,16 +165,15 @@ export function activate(context: vscode.ExtensionContext) {
 			const auto = matches.find((m) => m.snippet.flags.auto);
 			if (!auto) {return;}
 
-			// A native session (2+ tabstops) may still be live at this
-			// position - nesting another native session inside it would
-			// corrupt VS Code's tabstop navigation, so that stays blocked.
-			// A plain expansion (0-1 tabstops) never starts a session of its
-			// own, so it's always safe to let through even here (e.g. typing
-			// "pi" while still on a vector snippet's first tabstop should
-			// still become \pi).
+			// A native session may still be live at this position - nesting
+			// another native session inside it would corrupt VS Code's
+			// tabstop navigation, so that stays blocked. A plain expansion
+			// never starts a session of its own, so it's always safe to let
+			// through even here (e.g. typing "pi" while still on a vector
+			// snippet's first tabstop should still become \pi).
 			if (runs.isNativeSessionActive(event.document.uri)) {
 				const resolved = resolveTemplate(generateText(auto, event.document));
-				if (resolved.placeholderCount >= 2) {return;}
+				if (resolved.needsNativeSession) {return;}
 			}
 
 			expanding = true;

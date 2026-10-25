@@ -91,7 +91,7 @@ In `.ptx` files, that's the body of a math element — `<m>`, `<me>`, `<men>`, `
 
 ## Multi-field snippets
 
-Two or more tabstops (`\frac{$1}{$2}`) get a real native Tab session. Zero or one tabstop is inserted as plain text with the cursor placed directly, which is what lets several `A`-flagged shortcuts chain inside one `$...$`.
+Two or more tabstops (`\frac{$1}{$2}`) get a real native Tab session, as does a snippet using a mirrored tabstop (`\begin{$1}...\end{$1}`), a choice, or a variable. Anything else (zero or one tabstop) is inserted as plain text with the cursor placed directly, indented to match the line just like a native snippet, which is what lets several `A`-flagged shortcuts chain inside one `$...$`.
 
 ## Manual expansion
 

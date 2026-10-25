@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// expands atomically, so one undo reverts the whole expansion.
 			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
 			const bodyLines = resolved.text.split('\n').length - 1;
-			runs.recordNativeExpansion(document.uri, match.range.start.line, match.range.start.line + bodyLines);
+			runs.recordNativeExpansion(document.uri, match.range, match.range.start.line + bodyLines);
 			log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
 			return;
 		}
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
 		editor.selection = new vscode.Selection(cursor, cursor);
 
 		const ownSuffix = resolved.firstPlaceholderOffset !== undefined ? resolved.text.slice(resolved.firstPlaceholderOffset) : undefined;
-		runs.recordPlainExpansion(document.uri, cursor, ownSuffix);
+		runs.recordPlainExpansion(document.uri, match.range, cursor, ownSuffix);
 		log(() => `  -> plain; cursor=${cursor.line}:${cursor.character}; ${runs.debugSnapshot(document.uri)}`);
 	}
 

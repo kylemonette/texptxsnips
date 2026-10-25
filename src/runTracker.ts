@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import { advancePosition } from './snippetTemplate';
 
+interface LineSpan {
+	start: number;
+	end: number;
+}
+
 interface RunState {
 	// Line span a real native tabstop session (2+ distinct placeholders)
 	// may still be live within. Tracked as a line range rather than a
@@ -10,7 +15,7 @@ interface RunState {
 	// tabstop - any edit still landing within the original lines is
 	// presumed part of the same session. Cleared for certain only once VS
 	// Code itself confirms the session is over (see endNativeSession).
-	nativeSessionLines?: { start: number; end: number };
+	nativeSessionLines?: LineSpan;
 	// Position where an unbroken run of plain (0-1 placeholder) auto-expand
 	// chaining currently ends. Plain expansions never start a native
 	// session, so chaining several of them (e.g. multiple inline math
@@ -29,13 +34,28 @@ interface RunState {
 	// means clearing autoRunEnd/pendingExits - but that would otherwise
 	// silently strand whatever the plain run was still waiting to exit
 	// (e.g. mk's closing $, just past int's own template). This holds that
-	// stack while the nested native session is live, resumed once we can
-	// next confirm it's over.
-	pausedExits?: string[];
+	// stack, along with the line span of the session it was paused for.
+	// It's only resumed from within that span (the stranded exit sits just
+	// past the session's template), and dropped as soon as an edit lands
+	// outside it, since the user has moved on.
+	paused?: { exits: string[]; lines: LineSpan };
 }
 
 function freshState(): RunState {
 	return { pendingExits: [] };
+}
+
+/**
+ * Returns false if `change` landed outside `span`. Otherwise grows or
+ * shrinks `span` by the number of lines the change adds or removes, and
+ * returns true.
+ */
+function trackSpan(span: LineSpan, change: vscode.TextDocumentContentChangeEvent | undefined): boolean {
+	if (change === undefined || change.range.end.line < span.start || change.range.end.line > span.end) {return false;}
+	const added = (change.text.match(/\n/g) ?? []).length;
+	const removed = change.range.end.line - change.range.start.line;
+	span.end = Math.max(span.start, span.end + added - removed);
+	return true;
 }
 
 /**
@@ -75,17 +95,11 @@ export class RunTracker {
 	onEdit(uri: vscode.Uri, change: vscode.TextDocumentContentChangeEvent | undefined) {
 		const state = this.state(uri);
 
-		if (state.nativeSessionLines !== undefined) {
-			const lines = state.nativeSessionLines;
-			const stillLive = change !== undefined && change.range.end.line >= lines.start && change.range.end.line <= lines.end;
-			if (stillLive) {
-				// Typing itself can only grow the span (adding newlines
-				// pushes later tabstops further down); it never shrinks it.
-				const addedLines = (change!.text.match(/\n/g) ?? []).length;
-				lines.end += addedLines;
-			} else {
-				state.nativeSessionLines = undefined;
-			}
+		if (state.nativeSessionLines !== undefined && !trackSpan(state.nativeSessionLines, change)) {
+			state.nativeSessionLines = undefined;
+		}
+		if (state.paused !== undefined && !trackSpan(state.paused.lines, change)) {
+			state.paused = undefined;
 		}
 
 		if (state.autoRunEnd !== undefined) {
@@ -101,12 +115,19 @@ export class RunTracker {
 		}
 	}
 
-	/** Records a real native tabstop session starting (2+ distinct placeholders), spanning lines `startLine` through `endLine` of its initial (pre-edit) rendering. */
-	recordNativeExpansion(uri: vscode.Uri, startLine: number, endLine: number) {
+	/**
+	 * Records a real native tabstop session starting (2+ distinct
+	 * placeholders) from the trigger text at `trigger`, spanning through
+	 * line `endLine` of its initial (pre-edit) rendering. An outer run's
+	 * pending exits are paused only if the trigger was typed right where
+	 * that run left off.
+	 */
+	recordNativeExpansion(uri: vscode.Uri, trigger: vscode.Range, endLine: number) {
 		const state = this.state(uri);
-		state.nativeSessionLines = { start: startLine, end: endLine };
-		if (state.autoRunEnd !== undefined && state.pendingExits.length > 0) {
-			state.pausedExits = state.pendingExits;
+		const continuing = state.autoRunEnd !== undefined && state.autoRunEnd.isEqual(trigger.end);
+		state.nativeSessionLines = { start: trigger.start.line, end: endLine };
+		if (continuing && state.pendingExits.length > 0) {
+			state.paused = { exits: state.pendingExits, lines: { ...state.nativeSessionLines } };
 		}
 		state.autoRunEnd = undefined;
 		state.pendingExits = [];
@@ -122,8 +143,15 @@ export class RunTracker {
 		this.state(uri).nativeSessionLines = undefined;
 	}
 
-	/** Records a plain-text expansion (0-1 distinct placeholders) whose cursor ended up at `cursor`, with its own trailing text `ownSuffix` if it had a placeholder. */
-	recordPlainExpansion(uri: vscode.Uri, cursor: vscode.Position, ownSuffix: string | undefined) {
+	/**
+	 * Records a plain-text expansion (0-1 distinct placeholders) of the
+	 * trigger text at `trigger`, whose cursor ended up at `cursor`, with its
+	 * own trailing text `ownSuffix` if it had a placeholder. It joins the
+	 * current run only if the trigger was typed right where that run left
+	 * off (e.g. not a Tab-expansion somewhere else) - otherwise it starts a
+	 * fresh one.
+	 */
+	recordPlainExpansion(uri: vscode.Uri, trigger: vscode.Range, cursor: vscode.Position, ownSuffix: string | undefined) {
 		const state = this.state(uri);
 
 		// Nested inside a still-live native tabstop session: any outer run's
@@ -132,10 +160,11 @@ export class RunTracker {
 		// to fire yet anyway, since native navigation still owns Tab.
 		if (state.nativeSessionLines !== undefined) {return;}
 
-		const resuming = this.tryResume(state);
-		if (state.autoRunEnd === undefined && !resuming) {
-			state.pendingExits = ownSuffix !== undefined ? [ownSuffix] : [];
-		} else if (ownSuffix !== undefined) {
+		const continuing = state.autoRunEnd !== undefined && state.autoRunEnd.isEqual(trigger.end);
+		if (!continuing && !this.tryResume(state, trigger.start)) {
+			state.pendingExits = [];
+		}
+		if (ownSuffix !== undefined) {
 			state.pendingExits.push(ownSuffix);
 		}
 		state.autoRunEnd = cursor;
@@ -147,15 +176,16 @@ export class RunTracker {
 	 * fraction's own closing }), when the cursor is sitting right where the
 	 * run left off - undefined otherwise. A native session having just
 	 * ended (the caller only invokes this once VS Code itself reports
-	 * !inSnippetMode) resumes a paused outer run first. A still-active
-	 * native session refuses outright, rather than relying solely on the
-	 * caller having called endNativeSession() first.
+	 * !inSnippetMode) resumes a paused outer run first, if the cursor is
+	 * still within that session's lines. A still-active native session
+	 * refuses outright, rather than relying solely on the caller having
+	 * called endNativeSession() first.
 	 */
 	tryExit(uri: vscode.Uri, position: vscode.Position): vscode.Position | undefined {
 		const state = this.state(uri);
 		if (state.nativeSessionLines !== undefined) {return undefined;}
-		if (state.autoRunEnd === undefined) {
-			this.tryResume(state, position);
+		if (state.autoRunEnd === undefined && this.tryResume(state, position)) {
+			state.autoRunEnd = position;
 		}
 		if (state.pendingExits.length === 0 || state.autoRunEnd === undefined || !state.autoRunEnd.isEqual(position)) {
 			return undefined;
@@ -166,11 +196,12 @@ export class RunTracker {
 		return exit;
 	}
 
-	private tryResume(state: RunState, atPosition?: vscode.Position): boolean {
-		if (state.autoRunEnd !== undefined || state.pausedExits === undefined) {return false;}
-		state.pendingExits = state.pausedExits;
-		state.pausedExits = undefined;
-		if (atPosition !== undefined) {state.autoRunEnd = atPosition;}
+	/** Restores paused exits as the pending ones, if `at` is within the line span of the session they were paused for. */
+	private tryResume(state: RunState, at: vscode.Position): boolean {
+		const paused = state.paused;
+		if (paused === undefined || at.line < paused.lines.start || at.line > paused.lines.end) {return false;}
+		state.pendingExits = paused.exits;
+		state.paused = undefined;
 		return true;
 	}
 
@@ -178,7 +209,7 @@ export class RunTracker {
 	debugSnapshot(uri: vscode.Uri): string {
 		const s = this.state(uri);
 		const pos = (p: vscode.Position | undefined) => (p ? `${p.line}:${p.character}` : 'undefined');
-		const lines = s.nativeSessionLines ? `${s.nativeSessionLines.start}-${s.nativeSessionLines.end}` : 'undefined';
-		return `nativeSessionLines=${lines} autoRunEnd=${pos(s.autoRunEnd)} pendingExits=${JSON.stringify(s.pendingExits)} pausedExits=${JSON.stringify(s.pausedExits)}`;
+		const span = (l: LineSpan | undefined) => (l ? `${l.start}-${l.end}` : 'undefined');
+		return `nativeSessionLines=${span(s.nativeSessionLines)} autoRunEnd=${pos(s.autoRunEnd)} pendingExits=${JSON.stringify(s.pendingExits)} paused=${s.paused ? `${JSON.stringify(s.paused.exits)}@${span(s.paused.lines)}` : 'undefined'}`;
 	}
 }

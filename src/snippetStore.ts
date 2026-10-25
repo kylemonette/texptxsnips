@@ -6,7 +6,8 @@ import { Snippet } from './types';
 
 /**
  * Loads `<languageId>.snips` files from the snippets directory. Snippets
- * defined in `all.snips` are merged into every language's list.
+ * defined in `all.snips` are merged into every language's list, and used on
+ * their own for a language with no file of its own.
  */
 export class SnippetStore {
 	private byLanguage = new Map<string, Snippet[]>();
@@ -18,7 +19,7 @@ export class SnippetStore {
 	}
 
 	getSnippets(languageId: string): Snippet[] {
-		return this.byLanguage.get(languageId.toLowerCase()) ?? [];
+		return this.byLanguage.get(languageId.toLowerCase()) ?? this.byLanguage.get('all') ?? [];
 	}
 
 	async load(): Promise<string[]> {
@@ -51,8 +52,8 @@ export class SnippetStore {
 
 		const shared = map.get('all') ?? [];
 		for (const [languageId, snippets] of map) {
-			if (languageId === 'all') {continue;}
-			map.set(languageId, [...snippets, ...shared].sort((a, b) => b.priority - a.priority));
+			const merged = languageId === 'all' ? [...snippets] : [...snippets, ...shared];
+			map.set(languageId, merged.sort((a, b) => b.priority - a.priority));
 		}
 
 		this.byLanguage = map;

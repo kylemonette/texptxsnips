@@ -132,11 +132,17 @@ export function activate(context: vscode.ExtensionContext) {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document !== event.document || !LANGUAGES.includes(event.document.languageId)) {return;}
 
-			// editor.selection isn't guaranteed to have caught up with the
-			// document edit yet at this point, so derive the cursor position
-			// from the change itself rather than trusting the selection.
-			if (change === undefined || change.range.start.line !== change.range.end.line || change.text.includes('\n')) {return;}
-			const position = change.range.start.translate(0, change.text.length);
+			// Only a single typed character can auto-expand (it may replace a
+			// same-line selection, e.g. typing over an auto-closed bracket).
+			// Backspace, paste, and multi-character inserts like an
+			// auto-closed pair are left alone - otherwise e.g. undoing an
+			// expansion, typing a character, then deleting it would expand
+			// the restored trigger again. editor.selection isn't guaranteed
+			// to have caught up with the document edit yet at this point, so
+			// derive the cursor position from the change itself rather than
+			// trusting the selection.
+			if (change === undefined || change.text.length !== 1 || change.text === '\n' || change.range.start.line !== change.range.end.line) {return;}
+			const position = change.range.start.translate(0, 1);
 
 			const matches = getMatches(store.getSnippets(event.document.languageId), event.document, position, mathContext);
 			const auto = matches.find((m) => m.snippet.flags.auto);

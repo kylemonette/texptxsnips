@@ -137,6 +137,22 @@ suite('Extension end-to-end', () => {
 		assert.strictEqual(doc.version - versionBefore, 3, 'auto-expansion should be exactly one additional edit, not a separate delete+insert');
 	});
 
+	test('pasting a trigger, or deleting back to one, does not auto-expand it', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		// a single multi-character edit, like a paste
+		await editor.edit((eb) => eb.insert(new vscode.Position(0, 0), 'mk'));
+		await waitForQuiescence(doc);
+		assert.strictEqual(doc.getText(), 'mk', 'a pasted trigger should not expand');
+
+		await editor.edit((eb) => eb.insert(new vscode.Position(0, 2), 'x'));
+		await waitForQuiescence(doc);
+		await editor.edit((eb) => eb.delete(new vscode.Range(0, 2, 0, 3)));
+		await waitForQuiescence(doc);
+		assert.strictEqual(doc.getText(), 'mk', 'backspacing to just after a trigger should not expand it');
+	});
+
 	test('a non-auto snippet does not expand on typing but does on Tab', async function () {
 		this.timeout(60000);
 		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });

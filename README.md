@@ -95,7 +95,7 @@ Two or more tabstops (`\frac{$1}{$2}`) get a real native Tab session. Zero or on
 
 ## Manual expansion
 
-A snippet without `A` doesn't expand as you type — press **Tab** right after typing it.
+A snippet without `A` doesn't expand as you type — press **Tab** right after typing it. When an inline suggestion (e.g. Copilot's grey text) is showing, Tab accepts that instead.
 
 ## Commands and settings
 

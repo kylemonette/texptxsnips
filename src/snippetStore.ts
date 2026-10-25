@@ -4,6 +4,11 @@ import * as path from 'path';
 import { parseSnippetFile } from './parser';
 import { Snippet } from './types';
 
+/** Whether a file name has the `.snips` extension, in any case. */
+function isSnipsFile(name: string): boolean {
+	return name.toLowerCase().endsWith('.snips');
+}
+
 /**
  * Loads `<languageId>.snips` files from the snippets directory. Snippets
  * defined in `all.snips` are merged into every language's list, and used on
@@ -35,8 +40,8 @@ export class SnippetStore {
 		}
 
 		for (const entry of entries) {
-			if (!entry.toLowerCase().endsWith('.snips')) {continue;}
-			const languageId = path.basename(entry, '.snips').toLowerCase();
+			if (!isSnipsFile(entry)) {continue;}
+			const languageId = entry.slice(0, -'.snips'.length).toLowerCase();
 			const full = path.join(this.dir, entry);
 			let text: string;
 			try {
@@ -45,9 +50,15 @@ export class SnippetStore {
 				errors.push(`${full}: ${(err as Error).message}`);
 				continue;
 			}
-			const parsed = parseSnippetFile(text, entry);
-			errors.push(...parsed.errors);
-			map.set(languageId, parsed.snippets);
+			// parseSnippetFile reports problems as errors rather than
+			// throwing, but one file must never stop the rest from loading.
+			try {
+				const parsed = parseSnippetFile(text, entry);
+				errors.push(...parsed.errors);
+				map.set(languageId, parsed.snippets);
+			} catch (err) {
+				errors.push(`${entry}: failed to load: ${(err as Error).message}`);
+			}
 		}
 
 		const shared = map.get('all') ?? [];
@@ -66,9 +77,14 @@ export class SnippetStore {
 	 * does), not just react to a load this method already performed.
 	 */
 	watch(onReload: () => void): vscode.Disposable {
-		const pattern = new vscode.RelativePattern(vscode.Uri.file(this.dir), '*.snips');
+		// Watches every file and filters here, since a glob is case-sensitive
+		// on some platforms and load() accepts e.g. LaTeX.SNIPS too.
+		const pattern = new vscode.RelativePattern(vscode.Uri.file(this.dir), '*');
 		const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-		const disposables = [watcher.onDidChange(onReload), watcher.onDidCreate(onReload), watcher.onDidDelete(onReload)];
+		const onFile = (uri: vscode.Uri) => {
+			if (isSnipsFile(path.basename(uri.fsPath))) {onReload();}
+		};
+		const disposables = [watcher.onDidChange(onFile), watcher.onDidCreate(onFile), watcher.onDidDelete(onFile)];
 		return vscode.Disposable.from(watcher, ...disposables);
 	}
 }

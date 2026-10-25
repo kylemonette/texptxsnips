@@ -100,6 +100,15 @@ suite('parseSnippetFile', () => {
 		assert.strictEqual(snippets[0].trigger, 'ok');
 	});
 
+	test('an invalid regex trigger is reported and skipped, without stopping the rest of the file', () => {
+		const text = 'snippet `(abc` "bad" A\nx\nendsnippet\n\nsnippet ok "ok" A\ny\nendsnippet';
+		const { snippets, errors } = parseSnippetFile(text, 'test.snips');
+		assert.strictEqual(snippets.length, 1);
+		assert.strictEqual(snippets[0].trigger, 'ok');
+		assert.strictEqual(errors.length, 1);
+		assert.ok(errors[0].includes('invalid regex trigger'), errors[0]);
+	});
+
 	test('a compile error in one snippet body fails the whole file, matching hsnips\' single-Function-call model', () => {
 		const text = 'snippet x "x" A\n``this is not valid js(``\nendsnippet';
 		const { snippets, errors } = parseSnippetFile(text, 'test.snips');

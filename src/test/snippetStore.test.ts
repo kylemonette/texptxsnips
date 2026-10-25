@@ -30,6 +30,20 @@ suite('SnippetStore', () => {
 		assert.deepStrictEqual(store.getSnippets('latex').map((s) => s.trigger), ['b', 'a']);
 	});
 
+	test('a broken file does not stop the other files from loading', async () => {
+		const store = await storeWith({
+			'all.snips': 'snippet `(abc` "bad" A\nx\nendsnippet\n',
+			'latex.snips': 'snippet ok "ok" A\ny\nendsnippet\n',
+		});
+		assert.deepStrictEqual(store.getSnippets('latex').map((s) => s.trigger), ['ok']);
+	});
+
+	test('the .snips extension is recognized in any case', async () => {
+		const store = await storeWith({ 'LaTeX.SNIPS': 'snippet ok "ok" A\ny\nendsnippet\n' });
+		assert.deepStrictEqual(store.getSnippets('latex').map((s) => s.trigger), ['ok']);
+		assert.deepStrictEqual(store.getSnippets('pretext'), [], 'it is latex\'s own file, not a shared one');
+	});
+
 	test('all.snips on its own is sorted by priority too', async () => {
 		const store = await storeWith({ 'all.snips': 'snippet a "a" A\nx\nendsnippet\n\npriority 5\nsnippet b "b" A\ny\nendsnippet\n' });
 		assert.deepStrictEqual(store.getSnippets('latex').map((s) => s.trigger), ['b', 'a']);

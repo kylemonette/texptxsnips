@@ -24,9 +24,10 @@ interface Header {
 	unknownFlags: string;
 }
 
-function parseHeader(line: string): Header | null {
+/** Parses a `snippet ...` header line, or returns why it can't be used. */
+function parseHeader(line: string): Header | string {
 	const m = HEADER_RE.exec(line.trim());
-	if (!m) {return null;}
+	if (!m) {return 'malformed snippet header';}
 	const [, regexSrc, literal, description, flagChars] = m;
 	const flags = parseFlags(flagChars ?? '');
 	const unknownFlags = [...(flagChars ?? '')].filter((c) => !KNOWN_FLAGS.includes(c)).join('');
@@ -38,7 +39,11 @@ function parseHeader(line: string): Header | null {
 		// the whole pattern - a bare `$` suffix would only bind to the last
 		// alternative of `a|b`, and checking for an existing trailing `$`
 		// would mistake an escaped literal `\$` for an anchor.
-		trigger = new RegExp(`(?:${regexSrc})$`);
+		try {
+			trigger = new RegExp(`(?:${regexSrc})$`);
+		} catch (err) {
+			return `invalid regex trigger (${(err as Error).message})`;
+		}
 	} else {
 		trigger = literal!;
 	}
@@ -120,8 +125,8 @@ export function parseSnippetFile(text: string, source: string): ParsedSnippetFil
 		if (SNIPPET_LINE_RE.test(trimmed)) {
 			const header = parseHeader(lines[i]);
 			i++;
-			if (!header) {
-				errors.push(`${source}: malformed snippet header: ${lines[i - 1]}`);
+			if (typeof header === 'string') {
+				errors.push(`${source}: ${header}: ${lines[i - 1]}`);
 				while (i < lines.length && lines[i].trim() !== 'endsnippet') {i++;}
 				i++;
 				pendingPriority = 0;

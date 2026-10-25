@@ -68,6 +68,17 @@ suite('MathContextTracker', function () {
 		assert.strictEqual(await isMathAt(lines, 1, 15, 'pretext'), true);
 	});
 
+	test('<intertext> inside <md> switches back to text, then math again in the next <mrow>', async () => {
+		const lines = ['<md>', '  <mrow>x = y</mrow>', '  <intertext>so that pi', '  </intertext>', '  <mrow>z = </mrow>', '</md>'];
+		assert.strictEqual(await isMathAt(lines, 2, 23, 'pretext'), false, 'inside <intertext> should not be math');
+		assert.strictEqual(await isMathAt(lines, 4, 12, 'pretext'), true, 'the following <mrow> should be math again');
+	});
+
+	test('<m> nested inside <intertext> is math', async () => {
+		const result = await isMathAt(['<md><mrow>x</mrow><intertext>where <m>y + </m></intertext></md>'], 0, 42, 'pretext');
+		assert.strictEqual(result, true);
+	});
+
 	test('self-closing tag does not affect math state', async () => {
 		const result = await isMathAt(['<p>before <br/> <m>x + </m></p>'], 0, 22, 'pretext');
 		assert.strictEqual(result, true);

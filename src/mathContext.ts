@@ -19,6 +19,10 @@ const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 
 // PreTeXt XML elements whose body is typeset in math mode.
 const MATH_TAGS = new Set(['m', 'me', 'men', 'md', 'mdn', 'mrow']);
 
+// PreTeXt XML elements whose body is prose even when nested inside a math
+// element - e.g. <intertext> between the <mrow>s of an <md>/<mdn>.
+const TEXT_TAGS = new Set(['intertext']);
+
 type Frame =
 	| { kind: 'root' }
 	| { kind: 'group'; mode: Mode }
@@ -162,7 +166,8 @@ function handleXmlTag(text: string, i: number, stack: Frame[]): number | null {
 
 	const selfClosing = !closing && text[j - 1] === '/';
 	if (!closing && !selfClosing) {
-		stack.push({ kind: 'env', mode: MATH_TAGS.has(name) ? 'math' : currentMode(stack) });
+		const mode = MATH_TAGS.has(name) ? 'math' : TEXT_TAGS.has(name) ? 'text' : currentMode(stack);
+		stack.push({ kind: 'env', mode });
 	} else if (closing) {
 		popIf(stack, 'env');
 	}

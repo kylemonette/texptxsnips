@@ -254,6 +254,20 @@ suite('Extension end-to-end', () => {
 		assert.ok(editor.selection.isEmpty && editor.selection.active.isEqual(new vscode.Position(0, 13)), 'Tab should exit past the }');
 	});
 
+	test('Tab with multiple cursors is an ordinary Tab at each one, not an expansion at just the primary', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: 'thm\nthm', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		editor.selections = [new vscode.Selection(0, 3, 0, 3), new vscode.Selection(1, 3, 1, 3)];
+		await vscode.commands.executeCommand('texptxsnips.expandOnTab');
+		await waitForQuiescence(doc);
+		assert.ok(!doc.getText().includes('\\begin{theorem}'), 'nothing should expand');
+		const lines = doc.getText().split('\n');
+		assert.strictEqual(lines.length, 2);
+		assert.ok(lines.every((line) => line.startsWith('thm') && line.length > 3), `both cursors should get a tab, got ${JSON.stringify(doc.getText())}`);
+		assert.strictEqual(editor.selections.length, 2, 'both cursors are kept');
+	});
+
 	test('a non-auto snippet does not expand on typing but does on Tab', async function () {
 		this.timeout(60000);
 		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });

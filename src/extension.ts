@@ -213,9 +213,11 @@ export function activate(context: vscode.ExtensionContext) {
 			const editor = vscode.window.activeTextEditor;
 			// A tabstop's default text left selected by a plain expansion:
 			// Tab keeps it and exits past it, as in a native session. Any
-			// other selection gets an ordinary Tab (indent).
+			// other selection gets an ordinary Tab (indent), and so do
+			// multiple cursors - expanding or exiting at just the primary
+			// one would drop the others' Tab.
 			const onDefault = editor !== undefined && !editor.selection.isEmpty && runs.isSelectedDefault(editor.document.uri, editor.selection);
-			if (!editor || (!editor.selection.isEmpty && !onDefault) || !LANGUAGES.includes(editor.document.languageId)) {
+			if (!editor || editor.selections.length > 1 || (!editor.selection.isEmpty && !onDefault) || !LANGUAGES.includes(editor.document.languageId)) {
 				await vscode.commands.executeCommand('tab');
 				return;
 			}

@@ -79,6 +79,20 @@ suite('MathContextTracker', function () {
 		assert.strictEqual(result, true);
 	});
 
+	test('tags inside an XML comment do not affect math state in a pretext document', async () => {
+		assert.strictEqual(await isMathAt(['<!-- <m> -->', '<p>pi'], 1, 5, 'pretext'), false);
+		assert.strictEqual(await isMathAt(['<p><m>x <!-- </m> --> + '], 0, 24, 'pretext'), true, 'a closing tag in a comment must not end math');
+	});
+
+	test('an XML comment spanning several lines is skipped until -->', async () => {
+		const lines = ['<!--', '<m>x', '-->', '<p>pi'];
+		assert.strictEqual(await isMathAt(lines, 3, 5, 'pretext'), false);
+	});
+
+	test('<!-- is not treated as a comment in a LaTeX document', async () => {
+		assert.strictEqual(await isMathAt(['$<!-- x'], 0, 7), true);
+	});
+
 	test('self-closing tag does not affect math state', async () => {
 		const result = await isMathAt(['<p>before <br/> <m>x + </m></p>'], 0, 22, 'pretext');
 		assert.strictEqual(result, true);
@@ -157,6 +171,26 @@ suite('MathContextTracker', function () {
 	test('two \\end with different-length environment names on the same line both pop correctly', async () => {
 		const lines = ['\\begin{equation}\\begin{bmatrix}1\\end{bmatrix}\\end{equation} x'];
 		assert.strictEqual(await isMathAt(lines, 0, lines[0].length), false, 'should have returned to text mode after \\end{equation}');
+	});
+
+	test('$a$$b$ is two inline maths, not display math', async () => {
+		assert.strictEqual(await isMathAt(['$a$$b$ x'], 0, 8), false, 'back in text after the second inline math');
+		assert.strictEqual(await isMathAt(['$a$$b'], 0, 5), true, 'inside the second inline math');
+		assert.strictEqual(await isMathAt(['$$x$$ y'], 0, 7), false, '$$...$$ still opens and closes display math');
+		assert.strictEqual(await isMathAt(['$$x + '], 0, 6), true);
+	});
+
+	test('a text-switching command with a star or [optional] argument still switches to text', async () => {
+		assert.strictEqual(await isMathAt(['$\\cite[p.~3]{ke'], 0, 15), false);
+		assert.strictEqual(await isMathAt(['\\begin{equation} x \\tag*{ab'], 0, 27), false);
+		assert.strictEqual(await isMathAt(['$\\cite[p.~3]{key} x + '], 0, 22), true, 'back to math after the argument closes');
+	});
+
+	test('\\textbf, \\emph and \\shortintertext switch to text inside math', async () => {
+		for (const cmd of ['textbf', 'emph', 'shortintertext']) {
+			const line = `$\\${cmd}{ab`;
+			assert.strictEqual(await isMathAt([line], 0, line.length), false, `\\${cmd} should be text`);
+		}
 	});
 
 	test('invalidate() picks up a real edit that removes an opening $', async () => {

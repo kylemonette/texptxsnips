@@ -3,18 +3,27 @@ import * as vscode from 'vscode';
 type Mode = 'text' | 'math';
 
 // Environments that switch into math mode on their own, without needing an
-// enclosing math context.
-// `tikzcd` is the exception that still needs to be listed.
+// enclosing math context. Environments only valid inside math (bmatrix,
+// cases, aligned, ...) aren't listed - they inherit math from their
+// surroundings. `tikzcd` isn't an amsmath environment, but its cells are
+// typeset in math mode, so it's listed too.
 const MATH_ENVIRONMENTS = new Set([
 	'equation', 'equation*', 'align', 'align*', 'gather', 'gather*',
 	'multline', 'multline*', 'eqnarray', 'eqnarray*', 'flalign', 'flalign*',
 	'alignat', 'alignat*', 'math', 'displaymath', 'tikzcd',
 ]);
 
-// Commands whose brace argument switches back to prose/text mode.
-// \mathrm, \mathbf, \operatorname etc. are math-symbol formatting, not a
-// language switch, so they stay in math context and are deliberately excluded.
-const TEXT_SWITCH_COMMANDS = new Set(['text', 'textrm', 'mathrm', 'textnormal', 'mbox', 'intertext', 'label', 'cite', 'ref', 'eqref']);
+// Commands whose brace argument switches back to prose/text mode, plus
+// commands whose argument is a key or label rather than math. \mathrm is
+// listed too: it's math formatting, but mostly used for upright words (e.g.
+// \mathrm{if}) where math snippets would misfire. \mathbf, \operatorname
+// etc. stay in math context.
+const TEXT_SWITCH_COMMANDS = new Set([
+	'text', 'textrm', 'textnormal', 'textbf', 'textit', 'textsf', 'texttt',
+	'textup', 'textsl', 'textsc', 'textmd', 'emph', 'mathrm', 'mbox', 'hbox',
+	'intertext', 'shortintertext', 'tag',
+	'label', 'cite', 'ref', 'eqref', 'pageref', 'autoref', 'cref', 'Cref',
+]);
 
 // PreTeXt XML elements whose body is typeset in math mode.
 const MATH_TAGS = new Set(['m', 'me', 'men', 'md', 'mdn', 'mrow']);
@@ -30,11 +39,13 @@ type Frame =
 	| { kind: 'dollardollar' }
 	| { kind: 'paren' }
 	| { kind: 'bracket' }
-	| { kind: 'env'; mode: Mode };
+	| { kind: 'env'; mode: Mode }
+	| { kind: 'xmlcomment' };
 
 function frameMode(frame: Frame): Mode {
 	switch (frame.kind) {
 		case 'root':
+		case 'xmlcomment':
 			return 'text';
 		case 'group':
 		case 'env':
@@ -52,13 +63,27 @@ function currentMode(stack: Frame[]): Mode {
  * Scans LaTeX source left to right, tokenizing control sequences as atomic
  * units before ever comparing substrings. When `isXml` is set (PreTeXt
  * documents), `<tag>...</tag>` elements are tokenized the same way `\begin`/
- * `\end` are, so math elements like `<m>`/`<me>`/`<md>` switch into math mode.
+ * `\end` are, so math elements like `<m>`/`<me>`/`<md>` switch into math mode,
+ * and `<!-- ... -->` comments (which may span lines) are skipped entirely.
  */
 function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 	const out = stack.slice();
 	let i = 0;
 	while (i < text.length) {
 		const c = text[i];
+
+		if (isXml && out[out.length - 1].kind === 'xmlcomment') {
+			const end = text.indexOf('-->', i);
+			if (end === -1) {break;} // comment continues onto the next line
+			out.pop();
+			i = end + 3;
+			continue;
+		}
+		if (isXml && text.startsWith('<!--', i)) {
+			out.push({ kind: 'xmlcomment' });
+			i += 4;
+			continue;
+		}
 
 		if (c === '%' && !isXml) {
 			break; // rest of the line is a comment
@@ -114,13 +139,17 @@ function scanLine(text: string, stack: Frame[], isXml: boolean): Frame[] {
 		}
 
 		if (c === '$' && !isXml) {
-			if (text[i + 1] === '$') {
+			// Inside inline math, a `$` always closes it, even when another
+			// `$` follows - `$a$$b$` is two inline maths, not display math.
+			if (out[out.length - 1]?.kind === 'dollar') {
+				out.pop();
+				i += 1;
+			} else if (text[i + 1] === '$') {
 				if (out[out.length - 1]?.kind === 'dollardollar') {out.pop();}
 				else {out.push({ kind: 'dollardollar' });}
 				i += 2;
 			} else {
-				if (out[out.length - 1]?.kind === 'dollar') {out.pop();}
-				else {out.push({ kind: 'dollar' });}
+				out.push({ kind: 'dollar' });
 				i += 1;
 			}
 			continue;
@@ -197,8 +226,18 @@ function handleControlWord(name: string, text: string, pos: number, stack: Frame
 		}
 		return;
 	}
-	if (TEXT_SWITCH_COMMANDS.has(name) && text[pos] === '{') {
-		advance(1); // consume the opening brace here so it inherits text mode
+	if (TEXT_SWITCH_COMMANDS.has(name)) {
+		// Skip a star and any [optional] arguments (e.g. \tag*{..},
+		// \cite[p.~3]{key}) to reach the brace argument.
+		let k = pos;
+		if (text[k] === '*') {k++;}
+		while (text[k] === '[') {
+			const close = text.indexOf(']', k);
+			if (close === -1) {return;}
+			k = close + 1;
+		}
+		if (text[k] !== '{') {return;}
+		advance(k - pos + 1); // consume the opening brace here so it inherits text mode
 		stack.push({ kind: 'group', mode: 'text' });
 	}
 }

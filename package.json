@@ -87,7 +87,7 @@
         "texptxsnips.snippetsDir": {
           "type": "string",
           "default": "",
-          "description": "Directory containing <language>.snips files (e.g. latex.snips, pretext.snips, all.snips). Defaults to a texptxsnips folder alongside VS Code's own User directory."
+          "description": "Directory containing <language>.snips files (e.g. latex.snips, pretext.snips, all.snips). Defaults to a texptxsnips folder inside your editor's User settings folder (e.g. ~/Library/Application Support/Code/User/texptxsnips for VS Code on macOS)."
         }
       }
     }

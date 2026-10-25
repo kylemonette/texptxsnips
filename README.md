@@ -101,4 +101,4 @@ A snippet without `A` doesn't expand as you type — press **Tab** right after t
 
 - **TeXPtxSnips: Reload Snippets** — re-read all `.snips` files (also happens automatically on save).
 - **TeXPtxSnips: Open Snippets Directory** — create (if needed) and reveal the snippets folder.
-- `texptxsnips.snippetsDir` — override the snippets folder. Defaults to a `texptxsnips` folder alongside VS Code's own `User` directory.
+- `texptxsnips.snippetsDir` — override the snippets folder. Defaults to a `texptxsnips` folder inside your editor's own `User` settings folder (e.g. `~/Library/Application Support/Code/User/texptxsnips` for VS Code on macOS, or the `Code - Insiders` / `VSCodium` / `Cursor` equivalent).

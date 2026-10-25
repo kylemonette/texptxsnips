@@ -32,7 +32,7 @@ function leadingWhitespace(document: vscode.TextDocument, position: vscode.Posit
 export function activate(context: vscode.ExtensionContext) {
 	const output = vscode.window.createOutputChannel('TeXPtxSnips');
 	context.subscriptions.push(output);
-	const store = new SnippetStore(getSnippetsDir());
+	const store = new SnippetStore(getSnippetsDir(context.globalStorageUri));
 	const mathContext = new MathContextTracker();
 	const runs = new RunTracker();
 	let expanding = false;
@@ -249,14 +249,14 @@ export function activate(context: vscode.ExtensionContext) {
 			await vscode.commands.executeCommand('tab');
 		}),
 		vscode.commands.registerCommand('texptxsnips.reloadSnippets', async () => {
-			store.setDir(getSnippetsDir());
+			store.setDir(getSnippetsDir(context.globalStorageUri));
 			watcher.dispose();
 			watcher = store.watch(reload);
 			await reload();
 			vscode.window.showInformationMessage('TeXPtxSnips: snippets reloaded.');
 		}),
 		vscode.commands.registerCommand('texptxsnips.openSnippetsDir', async () => {
-			const dir = getSnippetsDir();
+			const dir = getSnippetsDir(context.globalStorageUri);
 			await fs.promises.mkdir(dir, { recursive: true });
 			await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
 		})

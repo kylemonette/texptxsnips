@@ -204,12 +204,4 @@ export class RunTracker {
 		state.paused = undefined;
 		return true;
 	}
-
-	/** Formats current state for diagnostic logging. */
-	debugSnapshot(uri: vscode.Uri): string {
-		const s = this.state(uri);
-		const pos = (p: vscode.Position | undefined) => (p ? `${p.line}:${p.character}` : 'undefined');
-		const span = (l: LineSpan | undefined) => (l ? `${l.start}-${l.end}` : 'undefined');
-		return `nativeSessionLines=${span(s.nativeSessionLines)} autoRunEnd=${pos(s.autoRunEnd)} pendingExits=${JSON.stringify(s.pendingExits)} paused=${s.paused ? `${JSON.stringify(s.paused.exits)}@${span(s.paused.lines)}` : 'undefined'}`;
-	}
 }

@@ -31,6 +31,7 @@ function leadingWhitespace(document: vscode.TextDocument, position: vscode.Posit
 
 export function activate(context: vscode.ExtensionContext) {
 	const output = vscode.window.createOutputChannel('TeXPtxSnips');
+	context.subscriptions.push(output);
 	const store = new SnippetStore(getSnippetsDir());
 	const mathContext = new MathContextTracker();
 	const runs = new RunTracker();
@@ -42,34 +43,53 @@ export function activate(context: vscode.ExtensionContext) {
 		output.show(true);
 	};
 
-	// Diagnostic tracing for the run-tracking state machine, off by default
-	// since it fires on every keystroke - enable texptxsnips.debug to
-	// investigate expansion/chaining bugs. Lazy so the message strings
-	// (several involve JSON.stringify) aren't built when disabled.
-	const log = (build: () => string) => {
-		if (vscode.workspace.getConfiguration('texptxsnips').get<boolean>('debug', false)) {
-			output.appendLine(build());
+	// Errors thrown by a snippet's code blocks, already reported since the
+	// last reload - the completion provider can hit the same one on every
+	// keystroke while its trigger matches.
+	const reportedSnippetErrors = new Set<string>();
+
+	// A snippet's code blocks are user JavaScript and can throw when the
+	// snippet expands (e.g. m[1] on a literal trigger, where m is null).
+	// Reports that and returns undefined, so one broken snippet can't take
+	// down the whole completion list or a keystroke's auto-expand.
+	const generate = (match: SnippetMatch, document: vscode.TextDocument): string | undefined => {
+		try {
+			return generateText(match, document);
+		} catch (err) {
+			const message = `${match.snippet.source}: snippet "${match.snippet.description}" threw: ${err instanceof Error ? err.message : String(err)}`;
+			if (!reportedSnippetErrors.has(message)) {
+				reportedSnippetErrors.add(message);
+				reportErrors([message]);
+			}
+			return undefined;
 		}
 	};
 
-	const reload = async () => reportErrors(await store.load());
+	const reload = async () => {
+		reportedSnippetErrors.clear();
+		reportErrors(await store.load());
+	};
 	reload();
 
+	// Replaced on every reload (the directory may have changed), so
+	// subscriptions holds one disposer for whichever watcher is current.
 	let watcher = store.watch(reload);
-	context.subscriptions.push(watcher);
+	context.subscriptions.push({ dispose: () => watcher.dispose() });
 
 	const completionProvider: vscode.CompletionItemProvider = {
 		provideCompletionItems(document, position) {
 			const snippets = store.getSnippets(document.languageId);
 			const matches = getMatches(snippets, document, position, mathContext).filter((m) => !m.snippet.flags.hidden);
-			return matches.map((match) => {
+			return matches.flatMap((match) => {
+				const text = generate(match, document);
+				if (text === undefined) {return [];}
 				const label = typeof match.snippet.trigger === 'string' ? match.snippet.trigger : document.getText(match.range);
 				const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Snippet);
 				item.detail = match.snippet.description;
 				item.range = match.range;
 				item.filterText = document.getText(match.range);
-				item.insertText = new vscode.SnippetString(generateText(match, document));
-				return item;
+				item.insertText = new vscode.SnippetString(text);
+				return [item];
 			});
 		},
 	};
@@ -91,34 +111,34 @@ export function activate(context: vscode.ExtensionContext) {
 	// a row (e.g. multiple inline math shortcuts in one $ $) is always safe
 	// regardless of what triggered it. See RunTracker for how an outer
 	// run's own pending exit survives a nested native session like this.
-	async function expandMatch(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument) {
-		const text = generateText(match, document);
+	// `text` is the snippet's already-generated body, so its code blocks
+	// run once per expansion.
+	async function expandMatch(editor: vscode.TextEditor, match: SnippetMatch, document: vscode.TextDocument, text: string) {
 		// Indented the way insertSnippet would, so a plain expansion's later
 		// lines line up with the trigger line just like a native one's.
 		// Only whitespace at line starts changes, so the native check and
 		// line count below are unaffected.
 		const resolved = resolveTemplate(indentTemplate(text, leadingWhitespace(document, match.range.start), indentOptions(editor)));
-		log(() => `expandMatch "${match.snippet.description}" resolved=${JSON.stringify(resolved.text)} placeholderCount=${resolved.placeholderCount} native=${resolved.needsNativeSession}`);
 
 		if (resolved.needsNativeSession) {
 			// A single insertSnippet call over the trigger range replaces and
 			// expands atomically, so one undo reverts the whole expansion. It
-			// gets the raw text, since it does its own indenting.
-			await editor.insertSnippet(new vscode.SnippetString(text), match.range);
+			// gets the raw text, since it does its own indenting. Either edit
+			// can be rejected (e.g. the document changed underneath it), in
+			// which case nothing was inserted and there's nothing to track.
+			if (!await editor.insertSnippet(new vscode.SnippetString(text), match.range)) {return;}
 			const bodyLines = resolved.text.split('\n').length - 1;
 			runs.recordNativeExpansion(document.uri, match.range, match.range.start.line + bodyLines);
-			log(() => `  -> native session; ${runs.debugSnapshot(document.uri)}`);
 			return;
 		}
 
-		await editor.edit((eb) => eb.replace(match.range, resolved.text));
+		if (!await editor.edit((eb) => eb.replace(match.range, resolved.text))) {return;}
 		const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
 		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
 		editor.selection = new vscode.Selection(cursor, cursor);
 
 		const ownSuffix = resolved.firstPlaceholderOffset !== undefined ? resolved.text.slice(resolved.firstPlaceholderOffset) : undefined;
 		runs.recordPlainExpansion(document.uri, match.range, cursor, ownSuffix);
-		log(() => `  -> plain; cursor=${cursor.line}:${cursor.character}; ${runs.debugSnapshot(document.uri)}`);
 	}
 
 	context.subscriptions.push(
@@ -139,13 +159,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// expandMatch() already updates tracking itself for the edits it
 			// makes; only track plain user keystrokes here.
-			const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
-			if (!expanding) {
-				runs.onEdit(event.document.uri, change);
-				log(() => `onDidChangeTextDocument change=${change ? JSON.stringify(change.text) : 'n/a'}; ${runs.debugSnapshot(event.document.uri)}`);
-			}
-
 			if (expanding) {return;}
+			const change = event.contentChanges.length === 1 ? event.contentChanges[0] : undefined;
+			runs.onEdit(event.document.uri, change);
+
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document !== event.document || !LANGUAGES.includes(event.document.languageId)) {return;}
 
@@ -164,6 +181,8 @@ export function activate(context: vscode.ExtensionContext) {
 			const matches = getMatches(store.getSnippets(event.document.languageId), event.document, position, mathContext);
 			const auto = matches.find((m) => m.snippet.flags.auto);
 			if (!auto) {return;}
+			const text = generate(auto, event.document);
+			if (text === undefined) {return;}
 
 			// A native session may still be live at this position - nesting
 			// another native session inside it would corrupt VS Code's
@@ -171,14 +190,11 @@ export function activate(context: vscode.ExtensionContext) {
 			// never starts a session of its own, so it's always safe to let
 			// through even here (e.g. typing "pi" while still on a vector
 			// snippet's first tabstop should still become \pi).
-			if (runs.isNativeSessionActive(event.document.uri)) {
-				const resolved = resolveTemplate(generateText(auto, event.document));
-				if (resolved.needsNativeSession) {return;}
-			}
+			if (runs.isNativeSessionActive(event.document.uri) && resolveTemplate(text).needsNativeSession) {return;}
 
 			expanding = true;
 			try {
-				await expandMatch(editor, auto, event.document);
+				await expandMatch(editor, auto, event.document, text);
 			} finally {
 				expanding = false;
 			}
@@ -206,11 +222,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
 			if (matches.length > 0) {
+				// A snippet whose code threw has been reported already;
+				// swallow the Tab rather than inserting one in its place.
+				const text = generate(matches[0], editor.document);
+				if (text === undefined) {return;}
 				// No outer native session can be live here (just confirmed
 				// above), so always safe to expand directly.
 				expanding = true;
 				try {
-					await expandMatch(editor, matches[0], editor.document);
+					await expandMatch(editor, matches[0], editor.document, text);
 				} finally {
 					expanding = false;
 				}
@@ -222,7 +242,6 @@ export function activate(context: vscode.ExtensionContext) {
 			// instead of inserting a literal tab.
 			const exit = runs.tryExit(editor.document.uri, editor.selection.active);
 			if (exit !== undefined) {
-				log(() => `expandOnTab: exiting to ${exit.line}:${exit.character}; ${runs.debugSnapshot(editor.document.uri)}`);
 				editor.selection = new vscode.Selection(exit, exit);
 				return;
 			}
@@ -233,7 +252,6 @@ export function activate(context: vscode.ExtensionContext) {
 			store.setDir(getSnippetsDir());
 			watcher.dispose();
 			watcher = store.watch(reload);
-			context.subscriptions.push(watcher);
 			await reload();
 			vscode.window.showInformationMessage('TeXPtxSnips: snippets reloaded.');
 		}),

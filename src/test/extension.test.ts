@@ -97,6 +97,15 @@ suite('Extension end-to-end', () => {
 				'$0',
 				'\\end{$1}',
 				'endsnippet',
+				'',
+				// m is null for a literal trigger, so this throws on expansion
+				'snippet boom "throws" A',
+				'``rv = m[1]``',
+				'endsnippet',
+				'',
+				'snippet oom "after boom" i',
+				'ok',
+				'endsnippet',
 			].join('\n')
 		);
 
@@ -193,6 +202,18 @@ suite('Extension end-to-end', () => {
 		}
 		await waitFor(() => doc.getText() === '\\begin{xy}\n\n\\end{xy}');
 		assert.strictEqual(doc.getText(), '\\begin{xy}\n\n\\end{xy}');
+	});
+
+	test('a snippet whose code throws is skipped without breaking the other completions', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		await typeInto(editor, doc, 'boom');
+		assert.strictEqual(doc.getText(), 'boom', 'the throwing auto snippet should not expand');
+
+		const list = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(0, 4));
+		assert.ok(list.items.some((item) => item.detail === 'after boom'), 'the other matching snippet should still be offered');
+		assert.ok(!list.items.some((item) => item.detail === 'throws'), 'the throwing snippet should be left out');
 	});
 
 	test('a non-auto snippet does not expand on typing but does on Tab', async function () {

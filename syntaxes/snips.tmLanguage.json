@@ -28,7 +28,7 @@
 			"patterns": [{ "include": "source.js" }]
 		},
 		"snippet-block": {
-			"begin": "^(snippet)(?:\\s+(`)([^`]+)(`)|\\s+([^\\s\"]+))(?:\\s+(\")([^\"]*)(\"))?(?:\\s+([A-Za-z]+))?\\s*$",
+			"begin": "^\\s*(snippet)(?:\\s+(`)([^`]+)(`)|\\s+(\\S+))(?:\\s+(\")([^\"]*)(\"))?(?:\\s+([A-Za-z]+))?\\s*$",
 			"beginCaptures": {
 				"1": { "name": "keyword.control.snips" },
 				"2": { "name": "punctuation.definition.string.regexp.begin.snips" },

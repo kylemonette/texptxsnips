@@ -47,14 +47,14 @@ The body uses standard VS Code snippet syntax: `$1`, `${1}`, `${1:default text}`
 
 `i`, `w` only apply to bare-word triggers — a regex trigger's pattern is the whole word-boundary condition.
 `b` applies to both: even for a regex trigger, it independently requires nothing but whitespace before the match.
-So, a regex trigger cannot use `^` to get the beginning of the line.
+In a regex trigger, `^` only matches at column 0; use `b` to also allow leading whitespace.
 
 ### Code blocks
 
-Splice in JavaScript between double backticks; assign to `rv` to produce output:
+Splice in JavaScript between double backticks; assign to `rv` to produce output (a block that never assigns `rv` inserts nothing):
 
 ```
-snippet `([a-zA-Z])(\d)` "auto subscript" wAm
+snippet `([a-zA-Z])(\d)` "auto subscript" Am
 ``rv = m[1] + '_' + m[2]``
 endsnippet
 ```
@@ -75,7 +75,7 @@ snippet date "today's date" A
 endsnippet
 ```
 
-A `global` block runs once on load; its functions and constants are visible to every code block in the file. `priority N` applies to the single snippet that follows it (default `0`, higher wins on a tie).
+A `global` block runs once on load; its functions and constants are visible to every code block in the file. `priority N` applies to the single snippet that follows it (default `0`). When several snippets match at the cursor, the highest priority wins; on equal priority, snippets from the language's own file win over `all.snips`, then whichever is defined first.
 
 ### Syntax highlighting
 

@@ -106,7 +106,8 @@ export function activate(context: vscode.ExtensionContext) {
 	// already is. So does one using syntax only a native session renders
 	// (a mirrored tabstop, a choice, a variable, a transform). Any other
 	// snippet has at most one tabstop and nothing to navigate between, so
-	// it's resolved as plain text with the cursor placed manually instead:
+	// it's resolved as plain text with the cursor placed manually instead
+	// (its tabstop's default text, if any, selected):
 	// this never starts a native session, so chaining several of these in
 	// a row (e.g. multiple inline math shortcuts in one $ $) is always safe
 	// regardless of what triggered it. See RunTracker for how an outer

@@ -2,7 +2,7 @@
 
 // Minimal stand-in for the real `vscode` module, covering only the surface
 // actually touched by the pure-logic source files (mathContext, matching,
-// runTracker, snippetTemplate) and their tests. Installed in place of the
+// parser, runTracker, snippetStore, snippetTemplate, utils) and their tests. Installed in place of the
 // real module by register.js so those suites can run under plain Node,
 // without booting a real VS Code Extension Host. extension.test.ts (which
 // needs real editors, completion providers, and commands) is excluded from

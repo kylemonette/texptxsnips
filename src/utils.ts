@@ -50,10 +50,20 @@ export function defaultSnippetsDir(globalStoragePath: string, legacyDir = legacy
 	return dir;
 }
 
+/**
+ * The texptxsnips.snippetsDir setting as an absolute path. A leading `~` is
+ * the home folder, and so is the base of a relative path - otherwise it
+ * would resolve against the extension host's working directory (usually /)
+ * and silently find nothing.
+ */
+export function resolveConfiguredDir(configured: string, home = os.homedir()): string {
+	return path.resolve(home, configured.trim().replace(/^~(?=$|\/|\\)/, home));
+}
+
 export function getSnippetsDir(globalStorageUri: vscode.Uri): string {
 	const configured = vscode.workspace.getConfiguration('texptxsnips').get<string>('snippetsDir');
 	if (configured && configured.trim().length > 0) {
-		return configured.replace(/^~(?=$|\/|\\)/, os.homedir());
+		return resolveConfiguredDir(configured);
 	}
 	return globalStorageUri.scheme === 'file' ? defaultSnippetsDir(globalStorageUri.fsPath) : legacySnippetsDir();
 }

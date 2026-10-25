@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { defaultSnippetsDir, userDirFromGlobalStorage } from '../utils';
+import { defaultSnippetsDir, resolveConfiguredDir, userDirFromGlobalStorage } from '../utils';
 
 const EXT = 'kylemonette.texptxsnips';
 
@@ -59,5 +59,32 @@ suite('default snippets directory', () => {
 		const user = path.join(root, 'Code', 'User');
 		const legacy = path.join(user, 'texptxsnips');
 		assert.strictEqual(defaultSnippetsDir(path.join(user, 'globalStorage', EXT), legacy), legacy);
+	});
+});
+
+suite('configured snippets directory', () => {
+	const home = path.join(os.tmpdir(), 'home');
+
+	test('~ and ~/... start from the home folder', () => {
+		assert.strictEqual(resolveConfiguredDir('~', home), home);
+		assert.strictEqual(resolveConfiguredDir('~/snips', home), path.join(home, 'snips'));
+	});
+
+	test('a relative path starts from the home folder too, not the working directory', () => {
+		assert.strictEqual(resolveConfiguredDir('snips', home), path.join(home, 'snips'));
+		assert.strictEqual(resolveConfiguredDir('Dropbox/snips', home), path.join(home, 'Dropbox', 'snips'));
+	});
+
+	test('an absolute path is kept as is', () => {
+		const abs = path.join(os.tmpdir(), 'elsewhere', 'snips');
+		assert.strictEqual(resolveConfiguredDir(abs, home), abs);
+	});
+
+	test('surrounding whitespace is ignored', () => {
+		assert.strictEqual(resolveConfiguredDir('  ~/snips ', home), path.join(home, 'snips'));
+	});
+
+	test('a ~ that is part of a name is not the home folder', () => {
+		assert.strictEqual(resolveConfiguredDir('~snips', home), path.join(home, '~snips'));
 	});
 });

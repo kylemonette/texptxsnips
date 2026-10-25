@@ -40,7 +40,7 @@ The body uses standard VS Code snippet syntax: `$1`, `${1}`, `${1:default text}`
 | --- | --- |
 | `A` | Expand immediately on match, no Tab needed. |
 | `i` | Match anywhere, including mid-word. |
-| `w` | Require a word boundary before the trigger. Default when `i`/`w` are both omitted. |
+| `w` | Don't match right after a letter, digit, or underscore. Default when `i`/`w` are both omitted. |
 | `b` | Only match at the start of a line (whitespace before it is fine). |
 | `m` | Only match inside math mode. |
 | `h` | Hide from the completion list; still expands via `A` or Tab. |
@@ -101,4 +101,4 @@ A snippet without `A` doesn't expand as you type — press **Tab** right after t
 
 - **TeXPtxSnips: Reload Snippets** — re-read all `.snips` files (also happens automatically on save).
 - **TeXPtxSnips: Open Snippets Directory** — create (if needed) and reveal the snippets folder.
-- `texptxsnips.snippetsDir` — override the snippets folder. Defaults to a `texptxsnips` folder inside your editor's own `User` settings folder (e.g. `~/Library/Application Support/Code/User/texptxsnips` for VS Code on macOS, or the `Code - Insiders` / `VSCodium` / `Cursor` equivalent).
+- `texptxsnips.snippetsDir` — override the snippets folder (a relative path, like `~`, starts from your home folder). Defaults to a `texptxsnips` folder inside your editor's own `User` settings folder (e.g. `~/Library/Application Support/Code/User/texptxsnips` for VS Code on macOS, or the `Code - Insiders` / `VSCodium` / `Cursor` equivalent).

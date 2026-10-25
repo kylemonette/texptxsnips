@@ -21,6 +21,11 @@ interface RunState {
 	// session, so chaining several of them (e.g. multiple inline math
 	// shortcuts in one $ $) is always safe regardless of what triggered it.
 	autoRunEnd?: vscode.Position;
+	// The default text of the last plain expansion's tabstop, left selected
+	// (as a native session would) so typing replaces it - autoRunEnd is its
+	// end, where typing over it lands. Lets Tab tell that selection apart
+	// from one the user made. Cleared by any edit.
+	selectedDefault?: vscode.Range;
 	// Trailing static text of every snippet-with-a-placeholder expanded so
 	// far in the current run, innermost last. Chaining a snippet that
 	// itself has a placeholder (e.g. a fraction's denominator) inside
@@ -94,6 +99,7 @@ export class RunTracker {
 	/** Advances or breaks tracking for a single plain user keystroke. Callers must not invoke this for edits they made themselves. */
 	onEdit(uri: vscode.Uri, change: vscode.TextDocumentContentChangeEvent | undefined) {
 		const state = this.state(uri);
+		state.selectedDefault = undefined;
 
 		if (state.nativeSessionLines !== undefined && !trackSpan(state.nativeSessionLines, change)) {
 			state.nativeSessionLines = undefined;
@@ -145,13 +151,14 @@ export class RunTracker {
 
 	/**
 	 * Records a plain-text expansion (0-1 distinct placeholders) of the
-	 * trigger text at `trigger`, whose cursor ended up at `cursor`, with its
-	 * own trailing text `ownSuffix` if it had a placeholder. It joins the
-	 * current run only if the trigger was typed right where that run left
-	 * off (e.g. not a Tab-expansion somewhere else) - otherwise it starts a
-	 * fresh one.
+	 * trigger text at `trigger`. `placeholder` is where its selection ended
+	 * up: its tabstop's default text, left selected, or an empty range at
+	 * the cursor. `ownSuffix` is its trailing text after that, if it had a
+	 * placeholder. It joins the current run only if the trigger was typed
+	 * right where that run left off (e.g. not a Tab-expansion somewhere
+	 * else) - otherwise it starts a fresh one.
 	 */
-	recordPlainExpansion(uri: vscode.Uri, trigger: vscode.Range, cursor: vscode.Position, ownSuffix: string | undefined) {
+	recordPlainExpansion(uri: vscode.Uri, trigger: vscode.Range, placeholder: vscode.Range, ownSuffix: string | undefined) {
 		const state = this.state(uri);
 
 		// Nested inside a still-live native tabstop session: any outer run's
@@ -167,7 +174,13 @@ export class RunTracker {
 		if (ownSuffix !== undefined) {
 			state.pendingExits.push(ownSuffix);
 		}
-		state.autoRunEnd = cursor;
+		state.autoRunEnd = placeholder.end;
+		state.selectedDefault = placeholder.isEmpty ? undefined : placeholder;
+	}
+
+	/** Whether `selection` is exactly the default text the last plain expansion left selected, untouched since. */
+	isSelectedDefault(uri: vscode.Uri, selection: vscode.Range): boolean {
+		return this.state(uri).selectedDefault?.isEqual(selection) ?? false;
 	}
 
 	/**
@@ -193,6 +206,7 @@ export class RunTracker {
 		const suffix = state.pendingExits.pop()!;
 		const exit = advancePosition(state.autoRunEnd, suffix);
 		state.autoRunEnd = exit;
+		state.selectedDefault = undefined;
 		return exit;
 	}
 

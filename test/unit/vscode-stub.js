@@ -31,6 +31,12 @@ class Range {
 			this.end = b;
 		}
 	}
+	get isEmpty() {
+		return this.start.isEqual(this.end);
+	}
+	isEqual(other) {
+		return !!other && this.start.isEqual(other.start) && this.end.isEqual(other.end);
+	}
 }
 
 class Uri {

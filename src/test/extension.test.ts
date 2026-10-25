@@ -106,6 +106,10 @@ suite('Extension end-to-end', () => {
 				'snippet oom "after boom" i',
 				'ok',
 				'endsnippet',
+				'',
+				'snippet chs "choose" A',
+				'{n \\choose ${1:r}}$0',
+				'endsnippet',
 			].join('\n')
 		);
 
@@ -193,6 +197,8 @@ suite('Extension end-to-end', () => {
 		const editor = await vscode.window.showTextDocument(doc);
 		await typeInto(editor, doc, 'beg');
 		await waitFor(() => doc.getText().startsWith('\\begin{}'));
+		// the text can land before the session puts the cursor in $1
+		await waitFor(() => editor.selection.active.isEqual(new vscode.Position(0, 7)));
 		// Real typing, not editor.edit(): an API edit at an empty tabstop
 		// lands outside the snippet session's placeholder, so the session
 		// never mirrors it.
@@ -214,6 +220,38 @@ suite('Extension end-to-end', () => {
 		const list = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(0, 4));
 		assert.ok(list.items.some((item) => item.detail === 'after boom'), 'the other matching snippet should still be offered');
 		assert.ok(!list.items.some((item) => item.detail === 'throws'), 'the throwing snippet should be left out');
+	});
+
+	test('a single tabstop\'s default is left selected, so typing replaces it, and Tab then exits', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		await typeInto(editor, doc, 'chs');
+		await waitFor(() => doc.getText() === '{n \\choose r}');
+		// the selection is set just after the edit lands
+		await waitFor(() => editor.selection.isEqual(new vscode.Range(0, 11, 0, 12)));
+
+		// real typing replaces a selection; editor.edit() would only insert
+		await vscode.commands.executeCommand('type', { text: 'k' });
+		await waitForQuiescence(doc);
+		assert.strictEqual(doc.getText(), '{n \\choose k}');
+
+		await vscode.commands.executeCommand('texptxsnips.expandOnTab');
+		assert.ok(editor.selection.isEmpty && editor.selection.active.isEqual(new vscode.Position(0, 13)), 'Tab should exit past the }');
+	});
+
+	test('Tab on a still-selected default keeps it and exits, rather than indenting', async function () {
+		this.timeout(60000);
+		const doc = await vscode.workspace.openTextDocument({ content: '', language: 'latex' });
+		const editor = await vscode.window.showTextDocument(doc);
+		await typeInto(editor, doc, 'chs');
+		await waitFor(() => doc.getText() === '{n \\choose r}');
+		await waitFor(() => editor.selection.isEqual(new vscode.Range(0, 11, 0, 12)));
+
+		await vscode.commands.executeCommand('texptxsnips.expandOnTab');
+		await waitForQuiescence(doc);
+		assert.strictEqual(doc.getText(), '{n \\choose r}', 'the default is kept, and nothing is indented');
+		assert.ok(editor.selection.isEmpty && editor.selection.active.isEqual(new vscode.Position(0, 13)), 'Tab should exit past the }');
 	});
 
 	test('a non-auto snippet does not expand on typing but does on Tab', async function () {

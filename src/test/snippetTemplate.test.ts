@@ -47,6 +47,26 @@ suite('resolveTemplate', () => {
 		assert.strictEqual(resolveTemplate('${1:a\\\\}b').text, 'a\\b', 'an escaped backslash before } still lets } close the default');
 	});
 
+	test('firstPlaceholderEnd marks the end of the first tabstop\'s default text', () => {
+		const choose = resolveTemplate('{n \\choose ${1:r}}$0');
+		assert.strictEqual(choose.text, '{n \\choose r}');
+		assert.strictEqual(choose.firstPlaceholderOffset, 11);
+		assert.strictEqual(choose.firstPlaceholderEnd, 12);
+		const bare = resolveTemplate('\\$$1\\$');
+		assert.strictEqual(bare.firstPlaceholderEnd, bare.firstPlaceholderOffset, 'no default: an empty range');
+		assert.strictEqual(resolveTemplate('^2$0').firstPlaceholderEnd, undefined);
+		assert.strictEqual(resolveTemplate('${1:abc').firstPlaceholderEnd, undefined, 'unterminated, so literal text');
+	});
+
+	test('firstPlaceholderEnd follows the lowest-numbered tabstop, even when nested', () => {
+		const outer = resolveTemplate('${1:a${2:b}}c');
+		assert.strictEqual(outer.firstPlaceholderOffset, 0);
+		assert.strictEqual(outer.firstPlaceholderEnd, 2, '$1\'s default includes the nested $2');
+		const inner = resolveTemplate('${2:a${1:b}}c');
+		assert.strictEqual(inner.firstPlaceholderOffset, 1);
+		assert.strictEqual(inner.firstPlaceholderEnd, 2, 'the nested $1 is the first, not the outer $2');
+	});
+
 	test('a nested placeholder renders its own default and counts as a second tabstop', () => {
 		const r = resolveTemplate('${1:a${2:b}}c');
 		assert.strictEqual(r.text, 'abc');

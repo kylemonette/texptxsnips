@@ -7,6 +7,8 @@ export interface ResolvedTemplate {
 	cursorOffset: number;
 	/** Offset of the lowest-numbered tabstop other than $0, if any. */
 	firstPlaceholderOffset: number | undefined;
+	/** Offset just past that tabstop's default text (equal to firstPlaceholderOffset when it has none); defined exactly when it is. */
+	firstPlaceholderEnd: number | undefined;
 	/** Count of distinct tabstop numbers other than $0 (repeats of the same $N count once). */
 	placeholderCount: number;
 	/**
@@ -24,6 +26,7 @@ interface ParseState {
 	cursorOffset: number | undefined;
 	firstPlaceholderNum: number | undefined;
 	firstPlaceholderOffset: number | undefined;
+	firstPlaceholderEnd: number | undefined;
 	/** occurrences of each tabstop number other than $0 */
 	counts: Map<number, number>;
 	/** set by syntax only a native session renders: choices, variables, transforms */
@@ -45,6 +48,7 @@ export function resolveTemplate(template: string): ResolvedTemplate {
 		cursorOffset: undefined,
 		firstPlaceholderNum: undefined,
 		firstPlaceholderOffset: undefined,
+		firstPlaceholderEnd: undefined,
 		counts: new Map(),
 		unsupported: false,
 	};
@@ -54,6 +58,7 @@ export function resolveTemplate(template: string): ResolvedTemplate {
 		text: state.out,
 		cursorOffset: state.cursorOffset ?? state.out.length,
 		firstPlaceholderOffset: state.firstPlaceholderOffset,
+		firstPlaceholderEnd: state.firstPlaceholderEnd,
 		placeholderCount: state.counts.size,
 		needsNativeSession: state.unsupported || repeated || state.counts.size >= 2,
 	};
@@ -112,17 +117,28 @@ function parseDollar(t: string, i: number, state: ParseState): number | null {
 		}
 		if (t[j] === ':') {
 			const snapshot = { ...state, counts: new Map(state.counts) };
-			recordTabstop(state, n, state.out.length);
+			const offset = state.out.length;
+			recordTabstop(state, n, offset);
 			const end = parseSequence(t, j + 1, state, true);
-			if (end < t.length) {return end + 1;}
+			if (end < t.length) {
+				// still the first placeholder, not displaced by a lower-numbered one nested in its default
+				if (state.firstPlaceholderNum === n && state.firstPlaceholderOffset === offset) {
+					state.firstPlaceholderEnd = state.out.length;
+				}
+				return end + 1;
+			}
 			Object.assign(state, snapshot); // unterminated: backtrack to literal text
 			return null;
 		}
 		if (t[j] === '|') {
 			const end = findChoiceEnd(t, j + 1);
 			if (end === null) {return null;}
-			recordTabstop(state, n, state.out.length);
+			const offset = state.out.length;
+			recordTabstop(state, n, offset);
 			state.out += t.slice(j + 1, end).split(',')[0];
+			if (state.firstPlaceholderNum === n && state.firstPlaceholderOffset === offset) {
+				state.firstPlaceholderEnd = state.out.length;
+			}
 			state.unsupported = true;
 			return end + 2;
 		}
@@ -175,6 +191,7 @@ function recordTabstop(state: ParseState, n: number, offset: number) {
 	if (state.firstPlaceholderNum === undefined || n < state.firstPlaceholderNum) {
 		state.firstPlaceholderNum = n;
 		state.firstPlaceholderOffset = offset;
+		state.firstPlaceholderEnd = offset;
 	}
 }
 

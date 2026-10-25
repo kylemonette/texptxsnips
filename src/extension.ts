@@ -133,12 +133,15 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (!await editor.edit((eb) => eb.replace(match.range, resolved.text))) {return;}
-		const cursorOffset = resolved.firstPlaceholderOffset ?? resolved.cursorOffset;
-		const cursor = advancePosition(match.range.start, resolved.text.slice(0, cursorOffset));
-		editor.selection = new vscode.Selection(cursor, cursor);
+		// Like a native session, the tabstop's default text (if any) is left
+		// selected, so typing replaces it.
+		const at = (offset: number) => advancePosition(match.range.start, resolved.text.slice(0, offset));
+		const start = at(resolved.firstPlaceholderOffset ?? resolved.cursorOffset);
+		const end = resolved.firstPlaceholderEnd !== undefined ? at(resolved.firstPlaceholderEnd) : start;
+		editor.selection = new vscode.Selection(start, end);
 
-		const ownSuffix = resolved.firstPlaceholderOffset !== undefined ? resolved.text.slice(resolved.firstPlaceholderOffset) : undefined;
-		runs.recordPlainExpansion(document.uri, match.range, cursor, ownSuffix);
+		const ownSuffix = resolved.firstPlaceholderEnd !== undefined ? resolved.text.slice(resolved.firstPlaceholderEnd) : undefined;
+		runs.recordPlainExpansion(document.uri, match.range, new vscode.Range(start, end), ownSuffix);
 	}
 
 	context.subscriptions.push(
@@ -208,7 +211,11 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('texptxsnips.expandOnTab', async () => {
 			const editor = vscode.window.activeTextEditor;
-			if (!editor || !editor.selection.isEmpty || !LANGUAGES.includes(editor.document.languageId)) {
+			// A tabstop's default text left selected by a plain expansion:
+			// Tab keeps it and exits past it, as in a native session. Any
+			// other selection gets an ordinary Tab (indent).
+			const onDefault = editor !== undefined && !editor.selection.isEmpty && runs.isSelectedDefault(editor.document.uri, editor.selection);
+			if (!editor || (!editor.selection.isEmpty && !onDefault) || !LANGUAGES.includes(editor.document.languageId)) {
 				await vscode.commands.executeCommand('tab');
 				return;
 			}
@@ -220,7 +227,8 @@ export function activate(context: vscode.ExtensionContext) {
 			// "left it entirely"). Safe to confirm unconditionally here.
 			runs.endNativeSession(editor.document.uri);
 
-			const matches = getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
+			// Nothing can be expanded from a selection, only exited.
+			const matches = onDefault ? [] : getMatches(store.getSnippets(editor.document.languageId), editor.document, editor.selection.active, mathContext);
 			if (matches.length > 0) {
 				// A snippet whose code threw has been reported already;
 				// swallow the Tab rather than inserting one in its place.
@@ -240,9 +248,13 @@ export function activate(context: vscode.ExtensionContext) {
 			// Nothing to expand - if we're sitting right where an auto-expand
 			// run left off, jump past its innermost pending trailing text
 			// instead of inserting a literal tab.
-			const exit = runs.tryExit(editor.document.uri, editor.selection.active);
+			const exit = runs.tryExit(editor.document.uri, onDefault ? editor.selection.end : editor.selection.active);
 			if (exit !== undefined) {
 				editor.selection = new vscode.Selection(exit, exit);
+				return;
+			}
+			if (onDefault) {
+				editor.selection = new vscode.Selection(editor.selection.end, editor.selection.end);
 				return;
 			}
 
